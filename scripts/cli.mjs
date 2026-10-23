@@ -114,6 +114,99 @@ function installPythonDeps(python) {
 }
 
 // ---------------------------------------------------------------------------
+// Frontend (modo repositório/fonte): instala deps Node e constrói a UI.
+// No pacote publicado via npx a UI já vem pronta (frontend/dist) e este
+// bloco é pulado automaticamente.
+// ---------------------------------------------------------------------------
+
+const NPM = platform() === 'win32' ? 'npm.cmd' : 'npm';
+
+function npmRun(args, cwd, opts = {}) {
+  return spawnSync(NPM, args, { cwd, stdio: 'inherit', shell: true, windowsHide: true, ...opts });
+}
+
+function instalarNodeDeps(cwd, rotulo) {
+  console.log(`→ Instalando dependências Node (${rotulo})...`);
+  let res = npmRun(['install', '--no-fund', '--no-audit'], cwd);
+  if (res.status !== 0) {
+    // npm >= 12 pode bloquear postinstall scripts (ex.: esbuild) por política;
+    // aprova o pacote e repete a instalação.
+    console.log('ℹ npm bloqueou um postinstall; aprovando (esbuild) e repetindo a instalação...');
+    npmRun(['install-scripts', 'approve', 'esbuild'], cwd, { stdio: 'ignore' });
+    res = npmRun(['install', '--no-fund', '--no-audit'], cwd);
+  }
+  if (res.status !== 0) {
+    console.error(`✗ Falha ao instalar as dependências Node (${rotulo}).`);
+    process.exit(1);
+  }
+  console.log(`✓ Dependências Node instaladas (${rotulo}).`);
+}
+
+/**
+ * Idempotente por design: NÃO reinstala tudo a cada versão.
+ *  - Dependências Node presentes? Pula a instalação.
+ *  - Interface (dist) já construída? Pula o build.
+ *  - Build falhou (deps desatualizadas após troca de versão)?
+ *    Roda npm install incremental e tenta UMA vez mais.
+ */
+function instalarFrontend() {
+  const frontend = path.join(PKG_ROOT, 'frontend');
+  const dist = path.join(frontend, 'dist', 'index.html');
+  const viteBin =
+    platform() === 'win32'
+      ? path.join(frontend, 'node_modules', '.bin', 'vite.cmd')
+      : path.join(frontend, 'node_modules', '.bin', 'vite');
+
+  if (!existsSync(viteBin)) {
+    instalarNodeDeps(frontend, 'React, Vite, Tailwind');
+  } else {
+    console.log('✓ Dependências Node do frontend já instaladas — nada a fazer.');
+  }
+
+  if (existsSync(dist)) {
+    console.log('✓ Interface já construída (frontend/dist) — nada a fazer.');
+    return;
+  }
+
+  console.log('→ Construindo a interface (npm run build)...');
+  let build = npmRun(['run', 'build'], frontend);
+  if (build.status !== 0 || !existsSync(dist)) {
+    console.log('ℹ Build falhou — atualizando dependências Node (só o que faltar) e repetindo...');
+    instalarNodeDeps(frontend, 'atualização incremental do frontend');
+    build = npmRun(['run', 'build'], frontend);
+    if (build.status !== 0 || !existsSync(dist)) {
+      console.error('✗ Falha ao construir a interface (frontend/dist).');
+      console.error('  Rode manualmente: npm --prefix frontend run build');
+      process.exit(1);
+    }
+  }
+  console.log('✓ Interface pronta (frontend/dist).');
+}
+
+/**
+ * Modo fonte (checkout do repositório): prepara raiz + frontend + build,
+ * sempre de forma idempotente. No pacote npx a UI já vem pronta e isto
+ * é pulado automaticamente (não existe frontend/package.json no tarball).
+ */
+function instalarModoFonte() {
+  if (!existsSync(path.join(PKG_ROOT, 'frontend', 'package.json'))) return false;
+  console.log('ℹ Modo repositório (fonte) detectado.');
+  // Raiz: devDependencies (concurrently, usadas por "npm run dev").
+  if (!existsSync(path.join(PKG_ROOT, 'node_modules', 'concurrently'))) {
+    const res = npmRun(['install', '--no-fund', '--no-audit'], PKG_ROOT);
+    if (res.status !== 0) {
+      console.warn('⚠ Falha nas dependências da raiz (npm run dev pode não funcionar; o painel em si não é afetado).');
+    } else {
+      console.log('✓ Dependências da raiz instaladas.');
+    }
+  } else {
+    console.log('✓ Dependências da raiz já instaladas — nada a fazer.');
+  }
+  instalarFrontend();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
@@ -222,16 +315,18 @@ function cmdInstall(args) {
   if (args.skipPythonDeps) {
     console.log('ℹ Dependências Python não instaladas (--skip-python-deps).');
   } else if (pythonDepsOk(python)) {
-    console.log('✓ Dependências Python já estão instaladas.');
+    console.log('✓ Dependências Python já estão instaladas — nada a fazer.');
   } else {
     installPythonDeps(python);
   }
 
+  // Frontend (modo repositório): idempotente, só instala o que faltar.
+  instalarModoFonte();
+
   console.log('');
-  console.log('Instalação concluída. Próximos passos:');
-  console.log(`  1. Inicie o painel:  npx --yes @danhachuel/leadmaster@${VERSION}`);
-  console.log(`  2. Ou por aqui:      node scripts/cli.mjs start`);
-  console.log('  3. O navegador abrirá automaticamente no painel local.');
+  console.log('Instalação concluída. Para usar (comando único):');
+  console.log(`  npx --yes @danhachuel/leadmaster@${VERSION}`);
+  console.log('  (o mesmo comando, sem "install", também verifica e prepara tudo sozinho)');
 }
 
 function cmdStart(args) {
@@ -279,12 +374,13 @@ function cmdStart(args) {
       console.log('✓ Dependências Python OK.');
     }
 
-    const hasDist = existsSync(path.join(PKG_ROOT, 'frontend', 'dist', 'index.html'));
-    if (!hasDist) {
+    // Comando único (estilo Thunderbolt): o start também se auto-prepara.
+    // Modo fonte sem deps/build? Instala só o que faltar antes de subir.
+    // Pacote npx: UI já vem pronta (dist) e nada disto roda.
+    if (existsSync(path.join(PKG_ROOT, 'frontend', 'package.json'))) {
+      instalarModoFonte();
+    } else if (!existsSync(path.join(PKG_ROOT, 'frontend', 'dist', 'index.html'))) {
       console.warn('⚠ Interface construída não encontrada (frontend/dist).');
-      if (existsSync(path.join(PKG_ROOT, 'frontend', 'src'))) {
-        console.warn('  Modo desenvolvimento: rode "npm run dev" na raiz para usar o Vite dev server.');
-      }
     }
 
     const child = spawn(python.cmd, [...python.args, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(porta)], {

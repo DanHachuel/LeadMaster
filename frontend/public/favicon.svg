@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- LeadMaster — favicon do urso (tema indigo #1e1b4b da sidebar) -->
+  <rect width="100" height="100" rx="22" fill="#1e1b4b"/>
+  <!-- orelhas -->
+  <circle cx="31" cy="26" r="14" fill="#d97706"/>
+  <circle cx="69" cy="26" r="14" fill="#d97706"/>
+  <circle cx="31" cy="26" r="7" fill="#7c3a0a"/>
+  <circle cx="69" cy="26" r="7" fill="#7c3a0a"/>
+  <!-- cabeça -->
+  <ellipse cx="50" cy="60" rx="32" ry="28" fill="#d97706"/>
+  <!-- focinho -->
+  <ellipse cx="50" cy="69" rx="15.5" ry="11.5" fill="#fde68a"/>
+  <!-- olhos -->
+  <circle cx="38.5" cy="53" r="4.4" fill="#1e1b4b"/>
+  <circle cx="61.5" cy="53" r="4.4" fill="#1e1b4b"/>
+  <!-- nariz -->
+  <ellipse cx="50" cy="63.5" rx="5.2" ry="4" fill="#1e1b4b"/>
+  <!-- sorriso -->
+  <path d="M43 72 Q50 77 57 72" stroke="#1e1b4b" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+</svg>
