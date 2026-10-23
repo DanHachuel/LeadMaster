@@ -1,0 +1,23 @@
+# Dependências
+node_modules/
+
+# Builds
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Dados locais (runtime) — sementes são criadas automaticamente pelo backend
+storage/
+roteiros/
+videos/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

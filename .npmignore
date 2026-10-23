@@ -1,0 +1,7 @@
+**/__pycache__
+**/*.pyc
+backend/.venv
+backend/venv
+frontend/node_modules
+storage
+.github

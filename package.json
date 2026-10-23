@@ -1,0 +1,51 @@
+{
+  "name": "@danhachuel/leadmaster",
+  "version": "0.1.00",
+  "description": "SaaS local de prospecção e automação de conteúdo: CRM, extratores de leads, agentes de IA e pipeline de vídeos faceless (YouTube + Shorts).",
+  "license": "MIT",
+  "author": "Dan Hachuel",
+  "type": "module",
+  "bin": {
+    "leadmaster": "scripts/cli.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "scripts/cli.mjs",
+    "backend/",
+    "frontend/dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node scripts/cli.mjs start",
+    "install:local": "node scripts/cli.mjs install",
+    "doctor": "node scripts/cli.mjs doctor",
+    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "cd backend && python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:web": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build"
+  },
+  "keywords": [
+    "lead-generation",
+    "crm",
+    "faceless-video",
+    "youtube",
+    "shorts",
+    "automation",
+    "local-first"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DanHachuel/LeadMaster.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DanHachuel/LeadMaster/issues"
+  },
+  "homepage": "https://github.com/DanHachuel/LeadMaster#readme",
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
