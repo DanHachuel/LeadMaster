@@ -24,8 +24,9 @@ npx --yes @danhachuel/leadmaster@0.1.0
 ```
 
 - `install` prepara a pasta de dados e instala as dependências Python.
-- Sem argumentos, o launcher sobe o servidor local (FastAPI na porta **5055**) e abre o
-  navegador automaticamente. Se a porta 5055 estiver ocupada, o LeadMaster sobe
+- Sem argumentos, o launcher sobe o servidor local (FastAPI na porta **5055**) e
+  **imprime a URL no terminal** — o LeadMaster **nunca abre janelas**: quem abre o
+  navegador é você. Se a porta 5055 estiver ocupada, o LeadMaster sobe
   automaticamente na próxima livre (5056, 5057, ...). Pressione `Ctrl+C` para encerrar.
 - Flags úteis: `--home=<caminho>` (pasta de dados), `--port=<numero>`,
   `doctor` (diagnóstico), `help`.
@@ -65,7 +66,7 @@ para `http://127.0.0.1:8010` (backend de desenvolvimento).
 
 ```
 npx @danhachuel/leadmaster
- └─ scripts/cli.mjs            # instala deps Python, sobe uvicorn, abre navegador
+ └─ scripts/cli.mjs            # instala deps Python, sobe uvicorn, imprime a URL (nunca abre o navegador)
      └─ backend/main.py        # FastAPI: API + serving da UI construída (frontend/dist)
          ├─ services/storage.py        # JSON local (leads, campanhas, config)
          ├─ services/extractors.py     # Maps / Instagram / CNPJ

@@ -5,7 +5,8 @@
  *
  * Comandos:
  *   install  Prepara a pasta de dados (home) e instala as dependências Python.
- *   start    Sobe o backend FastAPI (serving da UI construída) e abre o navegador.
+ *   start    Sobe o backend FastAPI (serving da UI construída) e imprime a URL
+ *            no terminal — NUNCA abre o navegador; quem abre é o usuário.
  *            `npx @danhachuel/leadmaster` sem argumentos executa este comando.
  *   doctor   Diagnóstico rápido: Node, Python, dependências, pasta de dados.
  *   help     Ajuda.
@@ -240,16 +241,6 @@ async function waitForHealth(port, timeoutMs) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function openBrowser(url) {
-  try {
-    if (platform() === 'win32') spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
-    else if (platform() === 'darwin') spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
-    else spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
-  } catch {
-    console.log(`Abra manualmente: ${url}`);
-  }
-}
-
 function portaLivre(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -349,8 +340,7 @@ function cmdStart(args) {
     }
     const url = `http://127.0.0.1:${porta}`;
     if (jaRodando) {
-      console.log(`ℹ LeadMaster já está rodando em ${url} — abrindo o navegador.`);
-      openBrowser(url);
+      console.log(`ℹ LeadMaster já está rodando em ${url} — abra o endereço no navegador.`);
       process.exit(0);
       return;
     }
@@ -383,7 +373,7 @@ function cmdStart(args) {
       console.warn('⚠ Interface construída não encontrada (frontend/dist).');
     }
 
-    const child = spawn(python.cmd, [...python.args, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(porta)], {
+    const child = spawn(python.cmd, [...python.args, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(porta), '--no-access-log'], {
       cwd: path.join(PKG_ROOT, 'backend'),
       env: {
         ...process.env,
@@ -432,7 +422,8 @@ function cmdStart(args) {
       process.exit(1);
     }
     console.log(`✓ LeadMaster no ar em ${url} (dados: ${home})`);
-    openBrowser(url);
+    console.log('');
+    console.log(`ℹ Abra ${url} no navegador quando quiser — o LeadMaster nunca abre janelas sozinho.`);
     console.log('');
     console.log('Pressione Ctrl+C para encerrar.');
   })().catch((err) => {
@@ -473,7 +464,7 @@ function cmdHelp() {
   console.log('');
   console.log('Comandos:');
   console.log('  install   Prepara a pasta de dados e instala dependências Python.');
-  console.log('  start     Sobe o servidor local e abre o navegador (padrão).');
+  console.log('  start     Sobe o servidor local e imprime a URL no terminal (você abre o navegador).');
   console.log('  doctor    Diagnóstico do ambiente.');
   console.log('  version   Mostra a versão.');
   console.log('  help      Esta ajuda.');

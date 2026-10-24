@@ -6,6 +6,30 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.02] — 2026-10-24
+
+### Corrigido
+
+- **Poluição do terminal por logs de polling** (`GET /api/metrics`):
+  - Launcher (`scripts/cli.mjs`) e `npm run dev` iniciam o uvicorn com
+    `--no-access-log`.
+  - Filtro granular de logging no backend silencia o access-log **apenas** de
+    `/api/metrics` — erros, exceções e os demais endpoints continuam logados
+    normalmente (vale também para execuções manuais do uvicorn).
+  - Painel migrado para **TanStack Query** (`@tanstack/react-query`,
+    `refetchInterval` de 10s): ciclo de vida e cleanup automáticos, pausa
+    quando a aba fica ociosa e retoma ao focar; indicador "atualiza a cada
+    10s" visível nos blocos de gráficos.
+  - Polling de campanhas (Disparos) também via TanStack Query: sonda a cada
+    4s apenas enquanto existe campanha em andamento, sem `setInterval` manual.
+  - Verificado: nenhum outro endpoint é alvo de polling — `/api/config` e
+    demais chamadas são carregamentos pontuais no início da página.
+
+### Alterado
+
+- **O sistema nunca abre o navegador.** Removida a abertura automática de janela do
+  launcher — o LeadMaster apenas imprime a URL no terminal e quem abre é o usuário.
+
 ## [0.1.01] — 2026-10-23
 
 ### Removido

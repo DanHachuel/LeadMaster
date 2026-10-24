@@ -1,6 +1,6 @@
 {
   "name": "@danhachuel/leadmaster",
-  "version": "0.1.01",
+  "version": "0.1.02",
   "description": "SaaS local de prospecção e automação: CRM, extratores de leads e agentes de IA — 100% local.",
   "license": "MIT",
   "author": "Dan Hachuel",
@@ -24,7 +24,7 @@
     "install:local": "node scripts/cli.mjs install",
     "doctor": "node scripts/cli.mjs doctor",
     "dev": "concurrently -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "cd backend && python -m uvicorn main:app --reload --host 127.0.0.1 --port 8010",
+    "dev:api": "cd backend && python -m uvicorn main:app --reload --host 127.0.0.1 --port 8010 --no-access-log",
     "dev:web": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build"
   },

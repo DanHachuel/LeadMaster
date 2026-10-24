@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { Metricas } from '../lib/types';
 import { MetricCard } from '../components/MetricCard';
@@ -6,27 +6,20 @@ import { LeadsStageChart } from '../components/charts/LeadsStageChart';
 import { CampaignsDoughnut } from '../components/charts/CampaignsDoughnut';
 import { cn } from '../lib/format';
 
+const INTERVALO_METRICAS_MS = 10_000; // atualização automática do Painel
+
 export function Dashboard({ nomeUsuario }: { nomeUsuario: string }) {
-  const [metricas, setMetricas] = useState<Metricas | null>(null);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState('');
+  // Polling gerenciado pelo TanStack Query: cleanup automático no desmonte,
+  // pausa quando a aba fica oculta e retoma ao voltar (refetchOnWindowFocus).
+  const { data: metricas, isPending, isError, error, refetch } = useQuery<Metricas>({
+    queryKey: ['metrics'],
+    queryFn: () => api.metricas(),
+    refetchInterval: INTERVALO_METRICAS_MS,
+    refetchIntervalInBackground: false,
+  });
 
-  const carregar = useCallback(async () => {
-    try {
-      setErro('');
-      setMetricas(await api.metricas());
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha ao carregar métricas.');
-    } finally {
-      setCarregando(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    carregar();
-    const intervalo = setInterval(carregar, 15000);
-    return () => clearInterval(intervalo);
-  }, [carregar]);
+  const carregando = isPending;
+  const erro = isError ? (error instanceof Error ? error.message : 'Falha ao carregar métricas.') : '';
 
   const perfil = metricas?.perfil;
   const restam = perfil?.licenca.restam_dias;
@@ -112,12 +105,18 @@ export function Dashboard({ nomeUsuario }: { nomeUsuario: string }) {
               <h3 className="text-base font-semibold text-gray-800">Leads por etapa (CRM)</h3>
               <p className="text-xs text-gray-500 mt-1">Quantidade de leads em cada coluna do Kanban</p>
             </div>
-            <button
-              onClick={carregar}
-              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-            >
-              Atualizar
-            </button>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-gray-300 hidden sm:inline" title="O painel atualiza sozinho">
+                <i className="fas fa-rotate mr-1" />
+                a cada 10s
+              </span>
+              <button
+                onClick={() => refetch()}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                Atualizar
+              </button>
+            </div>
           </div>
           {metricas ? <LeadsStageChart porEtapa={metricas.leads_por_etapa} /> : <Skeleton />}
         </div>
@@ -128,12 +127,18 @@ export function Dashboard({ nomeUsuario }: { nomeUsuario: string }) {
               <h3 className="text-base font-semibold text-gray-800">Desempenho das campanhas</h3>
               <p className="text-xs text-gray-500 mt-1">Agregação de todas as campanhas (Enviadas × Erros)</p>
             </div>
-            <button
-              onClick={carregar}
-              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-            >
-              Atualizar
-            </button>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-gray-300 hidden sm:inline" title="O painel atualiza sozinho">
+                <i className="fas fa-rotate mr-1" />
+                a cada 10s
+              </span>
+              <button
+                onClick={() => refetch()}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                Atualizar
+              </button>
+            </div>
           </div>
           <CampaignsDoughnut enviadas={metricas?.campanhas.enviadas ?? 0} erros={metricas?.campanhas.erros ?? 0} />
           <div className="mt-4 flex items-center justify-center space-x-6 text-xs">

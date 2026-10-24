@@ -158,3 +158,8 @@ indigo/purple apenas na ação principal.
 2. `python -m py_compile` em todos os `.py` do backend (ou `python -m compileall backend`).
 3. Subir backend (`python -m uvicorn main:app` em `backend/`) e conferir `/api/health`.
 4. Fluxo manual: criar lead → mover no Kanban → criar campanha → iniciar.
+5. **Higiene de processos:** ao encerrar servidores de teste, mate APENAS processos do
+   LeadMaster (cujo caminho seja do repositório ou do pacote `@danhachuel/leadmaster`) —
+   nunca processos de outros projetos locais (ex.: outros apps uvicorn do usuário), e
+   nunca deixe instâncias rodando ao final da sessão. O LeadMaster **nunca abre o
+   navegador**: apenas imprime a URL no terminal.

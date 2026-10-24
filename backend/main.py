@@ -5,6 +5,7 @@ modo `npx`, onde um único servidor entrega painel e API na mesma porta.
 """
 
 import json
+import logging
 import os
 import platform
 import sys
@@ -35,6 +36,26 @@ def _versao() -> str:
 
 
 VERSION = _versao()
+
+
+# ---------------------------------------------------------------------------
+# Logs de acesso
+#
+# O endpoint /api/metrics é consultado por polling do Painel e inundava o
+# terminal. O filtro abaixo silencia APENAS esse endpoint no access-log —
+# erros, exceções e os demais endpoints continuam sendo logados normalmente.
+# (O launcher e o "npm run dev" também passam --no-access-log ao uvicorn.)
+# ---------------------------------------------------------------------------
+
+class _FiltroAcessoPolling(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            return "/api/metrics" not in record.getMessage()
+        except Exception:
+            return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_FiltroAcessoPolling())
 
 
 @asynccontextmanager

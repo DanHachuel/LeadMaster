@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { Campanha, Lead } from '../lib/types';
 import { ETAPAS, ETAPA_LABEL } from '../lib/types';
@@ -11,11 +12,31 @@ import { cn, dataHora } from '../lib/format';
 
 export function Disparos() {
   const { toast } = useToast();
-  const [campanhas, setCampanhas] = useState<Campanha[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [templates, setTemplates] = useState<Record<string, string>>({});
   const [modalAberto, setModalAberto] = useState(false);
   const [detalhes, setDetalhes] = useState<Campanha | null>(null);
+
+  // Polling gerenciado pelo TanStack Query: enquanto houver campanha em
+  // andamento sonda a cada 4s (Efeito Zeigarnik); caso contrário, sem polling.
+  // Cleanup e pausa em aba oculta são automáticos.
+  const { data: campanhas = [], refetch: recarregarCampanhas } = useQuery<Campanha[]>({
+    queryKey: ['campanhas'],
+    queryFn: () => api.campanhas.listar(),
+    refetchInterval: (query) =>
+      query.state.data?.some((c) => c.status === 'em_andamento') ? 4000 : false,
+    refetchIntervalInBackground: false,
+  });
+
+  const carregarBase = useCallback(async () => {
+    const [ls, ts] = await Promise.all([api.leads.listar(), api.agentes.templates()]);
+    setLeads(ls);
+    setTemplates(ts);
+  }, []);
+
+  useEffect(() => {
+    carregarBase().catch((e) => toast('erro', e.message));
+  }, [carregarBase, toast]);
 
   // Formulário da nova campanha
   const [nome, setNome] = useState('');
@@ -23,25 +44,6 @@ export function Disparos() {
   const [template, setTemplate] = useState('texto');
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [etapaFiltro, setEtapaFiltro] = useState<string>('todas');
-
-  const carregar = useCallback(async () => {
-    const [cs, ls, ts] = await Promise.all([api.campanhas.listar(), api.leads.listar(), api.agentes.templates()]);
-    setCampanhas(cs);
-    setLeads(ls);
-    setTemplates(ts);
-  }, []);
-
-  useEffect(() => {
-    carregar().catch((e) => toast('erro', e.message));
-  }, [carregar, toast]);
-
-  // Polling enquanto houver campanha em andamento (Efeito Zeigarnik)
-  const emAndamento = campanhas.some((c) => c.status === 'em_andamento');
-  useEffect(() => {
-    if (!emAndamento) return;
-    const intervalo = setInterval(() => carregar().catch(() => undefined), 4000);
-    return () => clearInterval(intervalo);
-  }, [emAndamento, carregar]);
 
   const leadsFiltrados = useMemo(
     () => (etapaFiltro === 'todas' ? leads : leads.filter((l) => l.etapa === etapaFiltro)),
@@ -76,7 +78,7 @@ export function Disparos() {
       setModalAberto(false);
       setNome('');
       setSelecionados(new Set());
-      await carregar();
+      await recarregarCampanhas();
     } catch (e) {
       toast('erro', e instanceof Error ? e.message : 'Falha ao criar campanha.');
     }
@@ -91,7 +93,7 @@ export function Disparos() {
             ? await api.campanhas.pausar(campanha.id)
             : await api.campanhas.parar(campanha.id);
       toast(r.ok ? 'sucesso' : 'info', r.mensagem);
-      await carregar();
+      await recarregarCampanhas();
     } catch (e) {
       toast('erro', e instanceof Error ? e.message : 'Falha na ação.');
     }
@@ -101,7 +103,7 @@ export function Disparos() {
     try {
       await api.campanhas.remover(campanha.id);
       toast('sucesso', `Campanha "${campanha.nome}" removida.`);
-      await carregar();
+      await recarregarCampanhas();
     } catch (e) {
       toast('erro', e instanceof Error ? e.message : 'Falha ao remover.');
     }
