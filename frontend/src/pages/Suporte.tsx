@@ -51,7 +51,6 @@ export function Suporte() {
             <Linha rotulo="Python" valor={doutor.python} />
             <Linha rotulo="Sistema" valor={doutor.sistema} />
             <Linha rotulo="Interface construída (dist)" valor={doutor.dist_frontend ? 'presente' : 'ausente (modo dev)'} />
-            <Linha rotulo="Uploads hoje" valor={String(doutor.uploads_hoje)} />
             <Linha rotulo="Pasta de dados" valor={doutor.storage} />
             <div className="pt-2 flex flex-wrap gap-2">
               {Object.entries(doutor.integracoes).map(([chave, ok]) => (
@@ -72,21 +71,21 @@ export function Suporte() {
         </h3>
         <div className="space-y-2">
           <Accordion titulo="Meus dados ficam na nuvem?" icone="fas fa-cloud">
-            Não. O LeadMaster é 100% local: todos os dados (leads, campanhas, pipeline, configuração) ficam em
+            Não. O LeadMaster é 100% local: todos os dados (leads, campanhas e configuração) ficam em
             arquivos JSON na sua pasta de dados.
           </Accordion>
-          <Accordion titulo="Preciso de servidor para os vídeos?" icone="fas fa-video">
-            Sim, localmente: o MoneyPrinterTurbo (porta 8080) produz os vídeos wide e o Short-Video-Maker (porta
-            3123) os Shorts. Configure as URLs em Ferramentas.
+          <Accordion titulo="Como turbinar os agentes com IA?" icone="fas fa-brain">
+            Em Ferramentas → LLM, informe base URL, modelo e API key de qualquer API
+            OpenAI-compatível. O agente de CRM passa a enriquecer e sugerir com mais contexto, e o
+            de atendimento conversa por texto. Sem LLM, as heurísticas locais continuam funcionando.
           </Accordion>
-          <Accordion titulo="Como publico no YouTube?" icone="fab fa-youtube">
-            Configure o uploader em Ferramentas → Upload YouTube (ou o fallback youtube-uploader-mcp). O pipeline
-            publica como <strong>não listado</strong> e vira <strong>público</strong> automaticamente após 1 hora —
-            até 50 uploads por dia.
+          <Accordion titulo="Como funcionam os disparos?" icone="fas fa-paper-plane">
+            As campanhas de Disparos usam o OpenOutreach (eracle/OpenOutreach). Configure a URL em
+            Ferramentas → Agentes — a validação acontece só na hora de iniciar a campanha.
           </Accordion>
           <Accordion titulo="Onde reporto problemas?" icone="fas fa-bug">
-            Abra uma issue em github.com/DanHachuel/LeadMaster ou use a página de diagnóstico acima ao pedir ajuda —
-            ela resume todo o ambiente.
+            Abra uma issue em github.com/DanHachuel/LeadMaster ou use a página de diagnóstico acima ao
+            pedir ajuda — ela resume todo o ambiente.
           </Accordion>
         </div>
       </div>
@@ -120,12 +119,9 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
 
 function rotuloIntegracao(chave: string): string {
   const mapa: Record<string, string> = {
-    moneyprinter: 'MoneyPrinterTurbo',
-    short_video_maker: 'Short-Video-Maker',
-    uploader_youtube: 'Uploader YouTube',
     llm_configurado: 'LLM',
-    openmontage: 'OpenMontage',
     openoutreach: 'OpenOutreach',
+    pipecat: 'pipecat',
   };
   return mapa[chave] ?? chave;
 }

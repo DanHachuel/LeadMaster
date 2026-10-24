@@ -2,7 +2,7 @@
 
 Toda a escrita é atômica (arquivo temporário + replace) e protegida por um lock
 global, para permitir o uso concorrente pelas rotas da API e pelos workers em
-background (pipeline, campanhas, agendador de publicação).
+background (campanhas de disparo).
 """
 
 import json
@@ -42,18 +42,6 @@ def get_home() -> Path:
 
 def storage_dir() -> Path:
     d = get_home() / "storage"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def roteiros_dir() -> Path:
-    d = get_home() / "roteiros"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def videos_dir() -> Path:
-    d = get_home() / "videos"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -116,20 +104,7 @@ DEFAULT_CONFIG = {
         "modelo": "gpt-4o-mini",
     },
     "integracoes": {
-        "moneyprinter": {"url": "http://localhost:8080"},
-        "short_video_maker": {"url": "http://localhost:3123"},
-        "openmontage": {"cli_path": ""},
-        "youtube_upload": {
-            "url": "",
-            "api_key": "",
-            "upload_path": "/api/upload",
-            "publicar_path": "/api/videos/{video_id}/publicar",
-            "modo": "nao_listado_1h_publico",
-            "limite_diario": 50,
-            "espera_publicacao_horas": 1,
-            "uploader_mcp_path": "",
-        },
-        "openoutreach": {"url": "", "send_path": "/api/send"},
+        "openoutreach": {"url": "", "enabled": False, "send_path": "/api/send"},
         "pipecat": {"url": ""},
     },
     "extratores": {
@@ -147,7 +122,7 @@ DEFAULT_CONFIG = {
             "templates": {
                 "texto": (
                     "Olá {{primeiro_nome}}! Sou da {{minha_empresa}} e ajudo empresas como "
-                    "{{empresa}} a crescerem com conteúdo automatizado no YouTube. "
+                    "{{empresa}} a crescerem com prospecção automatizada. "
                     "Posso te enviar uma proposta rápida?"
                 ),
                 "audio": "Olá {{primeiro_nome}}, tudo bem? Falo em nome da {{minha_empresa}}...",
@@ -159,10 +134,19 @@ DEFAULT_CONFIG = {
     },
     "webhook": {
         "url": "",
-        "eventos": ["lead.criado", "lead.etapa", "campanha.concluida", "video.publicado"],
+        "eventos": ["lead.criado", "lead.etapa", "campanha.concluida"],
     },
-    "uploads": {"data": "", "contador": 0},
 }
+
+# Chaves de versões antigas (o pipeline de vídeos foi retirado do produto) —
+# são removidas automaticamente da configuração local na primeira leitura.
+_CAMINHOS_REMOVIDOS = [
+    ("integracoes", "moneyprinter"),
+    ("integracoes", "short_video_maker"),
+    ("integracoes", "openmontage"),
+    ("integracoes", "youtube_upload"),
+    ("uploads",),
+]
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -188,8 +172,41 @@ def _deep_merge_preserve_secrets(base: dict, override: dict) -> dict:
     return out
 
 
+def _limpar_deprecated(config: dict) -> dict:
+    """Migração: remove chaves de versões antigas (pipeline de vídeos)."""
+    mudou = False
+    for caminho in _CAMINHOS_REMOVIDOS:
+        secao = config
+        for chave in caminho[:-1]:
+            secao = secao.get(chave) if isinstance(secao, dict) else None
+            if not isinstance(secao, dict):
+                break
+        else:
+            ultimo = caminho[-1]
+            if isinstance(secao, dict) and ultimo in secao:
+                secao.pop(ultimo)
+                mudou = True
+    # Evento de webhook do recurso removido.
+    webhook = config.get("webhook")
+    if isinstance(webhook, dict) and isinstance(webhook.get("eventos"), list):
+        eventos = [e for e in webhook["eventos"] if e != "video.publicado"]
+        if eventos != webhook["eventos"]:
+            webhook["eventos"] = eventos
+            mudou = True
+    # Dados órfãos do pipeline de vídeos: o arquivo só existia para esse recurso.
+    pipeline_path = storage_dir() / PIPELINE_FILE
+    if pipeline_path.exists():
+        try:
+            pipeline_path.unlink()
+        except OSError:
+            pass
+    if mudou:
+        _write(CONFIG_FILE, config)
+    return config
+
+
 def get_config() -> dict:
-    return _deep_merge(DEFAULT_CONFIG, _read(CONFIG_FILE, {}))
+    return _limpar_deprecated(_deep_merge(DEFAULT_CONFIG, _read(CONFIG_FILE, {})))
 
 
 def update_config(patch: dict) -> dict:
@@ -333,41 +350,6 @@ def delete_campaign(campaign_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Pipeline
-# ---------------------------------------------------------------------------
-
-def list_jobs() -> list:
-    data = _read(PIPELINE_FILE, {"jobs": []})
-    if isinstance(data, list):  # tolerância a formato antigo
-        data = {"jobs": data}
-    return data.get("jobs", [])
-
-
-def save_jobs(jobs: list) -> None:
-    _write(PIPELINE_FILE, {"jobs": jobs})
-
-
-def get_job(job_id: str) -> dict | None:
-    for j in list_jobs():
-        if j.get("id") == job_id:
-            return j
-    return None
-
-
-def upsert_job(job: dict) -> dict:
-    with LOCK:
-        jobs = list_jobs()
-        for i, j in enumerate(jobs):
-            if j.get("id") == job["id"]:
-                jobs[i] = job
-                break
-        else:
-            jobs.append(job)
-        save_jobs(jobs)
-        return job
-
-
-# ---------------------------------------------------------------------------
 # Seeds (primeira execução)
 # ---------------------------------------------------------------------------
 
@@ -446,8 +428,6 @@ def ensure_seeds() -> None:
             _write(LEADS_FILE, _seed_leads())
         if not (d / CAMPAIGNS_FILE).exists():
             _write(CAMPAIGNS_FILE, _seed_campaigns())
-        if not (d / PIPELINE_FILE).exists():
-            _write(PIPELINE_FILE, {"jobs": []})
         if not (d / CONFIG_FILE).exists():
             _write(CONFIG_FILE, DEFAULT_CONFIG)
 

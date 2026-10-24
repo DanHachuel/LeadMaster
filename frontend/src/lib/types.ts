@@ -56,62 +56,6 @@ export interface Campanha {
   eventos: EventoCampanha[];
 }
 
-export type StatusEtapaJob = 'pendente' | 'em_andamento' | 'concluida' | 'erro' | 'pulada';
-
-export interface EtapaJob {
-  id: 'roteiro' | 'thumbnail' | 'wide' | 'shorts' | 'upload';
-  nome: string;
-  status: StatusEtapaJob;
-  iniciada_em: string | null;
-  concluida_em: string | null;
-  mensagem: string;
-  dados: Record<string, unknown>;
-  logs: string[];
-}
-
-export type StatusJob = 'rascunho' | 'em_andamento' | 'pausado' | 'concluido' | 'erro' | 'cancelado';
-
-export interface UploadJob {
-  video_id?: string;
-  url?: string;
-  modo_upload?: string;
-  status?: string;
-  agenda_publicacao?: string | null;
-  publicado_em?: string | null;
-  ultimo_erro?: string;
-  tentativas?: number;
-}
-
-export interface JobPipeline {
-  id: string;
-  titulo: string;
-  tema: string;
-  tom: string;
-  duracao_min: number;
-  keyword_seo: string;
-  formatos: string[];
-  criado_em: string;
-  atualizado_em: string;
-  status: StatusJob;
-  etapa_atual: string | null;
-  etapas: EtapaJob[];
-  dados: {
-    roteiro?: string;
-    roteiro_chars?: number;
-    arquivo_roteiro?: string;
-    origem_roteiro?: string;
-    titulo_gerado?: string;
-    titulo_alternativo?: string;
-    thumbnail_prompt?: string;
-    videos_wide?: string[];
-    task_id_wide?: string;
-    resposta_shorts?: unknown;
-    arquivo_local?: string;
-  };
-  upload: UploadJob;
-  progresso?: number;
-}
-
 export interface SugestaoCrm {
   lead_id: string;
   lead_nome: string;
@@ -123,9 +67,6 @@ export interface SugestaoCrm {
 
 export interface Conexao {
   geral: boolean;
-  moneyprinter: boolean;
-  short_video_maker: boolean;
-  uploader_youtube: boolean;
   llm: boolean;
   openoutreach: boolean;
 }
@@ -139,7 +80,6 @@ export interface Metricas {
   leads_total: number;
   leads_por_etapa: Record<Etapa, number>;
   campanhas: { enviadas: number; erros: number; total: number };
-  pipeline: { ativos: number; concluidos: number };
   perfil: { nome: string; licenca: { ativa: boolean; expira_em: string; restam_dias: number | null } };
 }
 
@@ -147,20 +87,6 @@ export interface AppConfig {
   perfil: { nome: string; licenca: { ativa: boolean; expira_em: string; restam_dias: number | null } };
   llm: { provedor: string; base_url: string; api_key: string; api_key_configurado?: boolean; modelo: string };
   integracoes: {
-    moneyprinter: { url: string };
-    short_video_maker: { url: string };
-    openmontage: { cli_path: string };
-    youtube_upload: {
-      url: string;
-      api_key: string;
-      api_key_configurado?: boolean;
-      upload_path: string;
-      publicar_path: string;
-      modo: string;
-      limite_diario: number;
-      espera_publicacao_horas: number;
-      uploader_mcp_path: string;
-    };
     openoutreach: { url: string; enabled: boolean; send_path: string };
     pipecat: { url: string };
   };

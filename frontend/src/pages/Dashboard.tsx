@@ -78,10 +78,10 @@ export function Dashboard({ nomeUsuario }: { nomeUsuario: string }) {
             </span>
           </div>
           <p className="text-[11px] text-gray-400 mt-2">
-            <i className="fas fa-video mr-1" />
-            {metricas?.conexao.moneyprinter ? 'MoneyPrinterTurbo ✓' : 'MoneyPrinterTurbo ✗'} ·{' '}
-            <i className="fas fa-mobile-alt mr-1" />
-            {metricas?.conexao.short_video_maker ? 'Short-Video-Maker ✓' : 'Short-Video-Maker ✗'}
+            <i className="fas fa-brain mr-1" />
+            {metricas?.conexao.llm ? 'LLM ✓' : 'LLM não configurado'} ·{' '}
+            <i className="fas fa-paper-plane mr-1" />
+            {metricas?.conexao.openoutreach ? 'OpenOutreach ✓' : 'OpenOutreach não configurado'}
           </p>
         </MetricCard>
         <MetricCard

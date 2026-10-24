@@ -9,9 +9,9 @@ interface Props {
 
 const PASSOS_TUTORIAL = [
   { icone: 'fas fa-users', texto: 'Cadastre leads manualmente ou importe pelos Extratores (Maps, Instagram, CNPJ).' },
-  { icone: 'fas fa-columns', texto: 'Arraste os cards no CRM conforme o avança no funil (Leads → Em contato → Proposta → Fechado).' },
-  { icone: 'fas fa-video', texto: 'Crie um vídeo no Pipeline, inicie e acompanhe as 5 etapas até o upload no YouTube.' },
+  { icone: 'fas fa-columns', texto: 'Arraste os cards no CRM conforme avança no funil (Leads → Em contato → Proposta → Fechado).' },
   { icone: 'fas fa-bullhorn', texto: 'Monte campanhas de disparo com seus templates e acompanhe as taxas no Painel.' },
+  { icone: 'fas fa-robot', texto: 'Use os Agentes (disparo e atendimento) e configure o LLM em Ferramentas para turbiná-los.' },
 ];
 
 /** Header do protótipo: título da página, tutorial, avatar e nome do usuário. */
@@ -48,7 +48,7 @@ export function Header({ titulo, nomeUsuario }: Props) {
           ))}
         </ol>
         <p className="text-xs text-gray-400 mt-5">
-          Dica: as integrações externas (MoneyPrinterTurbo, Short-Video-Maker, uploader) são configuráveis em Ferramentas.
+          Dica: o LLM (para enriquecimento e agentes) é configurado em Ferramentas.
         </p>
       </Modal>
     </header>

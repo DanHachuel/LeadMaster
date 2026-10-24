@@ -8,7 +8,6 @@ const TODOS_EVENTOS = [
   { id: 'lead.criado', rotulo: 'Lead criado' },
   { id: 'lead.etapa', rotulo: 'Lead mudou de etapa' },
   { id: 'campanha.concluida', rotulo: 'Campanha concluída' },
-  { id: 'video.publicado', rotulo: 'Vídeo publicado' },
 ];
 
 export function Webhook() {
@@ -71,7 +70,7 @@ export function Webhook() {
     <div className="space-y-6 max-w-3xl">
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
         <p className="text-sm text-gray-500">
-          Receba eventos do LeadMaster (lead criado, mudança de etapa, campanha concluída, vídeo publicado) em
+          Receba eventos do LeadMaster (lead criado, mudança de etapa, campanha concluída) em
           qualquer endpoint local ou externo — útil para integrar com automações (n8n, Make, Zapier etc.).
         </p>
         <div>

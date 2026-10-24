@@ -67,24 +67,10 @@ export function Ferramentas({ onConfigSalva }: { onConfigSalva?: (config: AppCon
     }
   };
 
-  const testarUrl = async (rotulo: string, url: string) => {
-    if (!url) {
-      toast('erro', 'Informe a URL antes de testar.');
-      return;
-    }
-    setTestando(rotulo);
-    try {
-      const r = await api.config.testarIntegracao(url);
-      toast(r.ok ? 'sucesso' : 'erro', r.ok ? `${rotulo} respondeu (HTTP ${r.status_http}).` : r.mensagem ?? 'Sem resposta.');
-    } finally {
-      setTestando('');
-    }
-  };
-
   return (
     <div className="space-y-6 max-w-4xl">
       {/* LLM */}
-      <Cartao titulo="LLM (roteiros e agentes)" icone="fas fa-brain">
+      <Cartao titulo="LLM (agentes de IA)" icone="fas fa-brain">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Campo rotulo="Base URL" valor={config.llm.base_url} onChange={(v) => atualizar((c) => { c.llm.base_url = v; })} placeholder="https://api.openai.com/v1" />
           <Campo rotulo="Modelo" valor={config.llm.modelo} onChange={(v) => atualizar((c) => { c.llm.modelo = v; })} placeholder="gpt-4o-mini" />
@@ -95,87 +81,6 @@ export function Ferramentas({ onConfigSalva }: { onConfigSalva?: (config: AppCon
           />
         </div>
         <AcaoTestar rotulo="Testar conexão LLM" carregando={testando === 'llm'} onClick={testarLlm} />
-      </Cartao>
-
-      {/* Integrações de vídeo */}
-      <Cartao titulo="Produção de vídeos" icone="fas fa-film">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Campo
-            rotulo="MoneyPrinterTurbo — URL"
-            valor={config.integracoes.moneyprinter.url}
-            onChange={(v) => atualizar((c) => { c.integracoes.moneyprinter.url = v; })}
-            placeholder="http://localhost:8080"
-          />
-          <Campo
-            rotulo="Short-Video-Maker — URL"
-            valor={config.integracoes.short_video_maker.url}
-            onChange={(v) => atualizar((c) => { c.integracoes.short_video_maker.url = v; })}
-            placeholder="http://localhost:3123"
-          />
-        </div>
-        <div className="flex gap-3">
-          <AcaoTestar rotulo="Testar MoneyPrinterTurbo" carregando={testando === 'mp'} onClick={() => testarUrl('MoneyPrinterTurbo', config.integracoes.moneyprinter.url)} />
-          <AcaoTestar rotulo="Testar Short-Video-Maker" carregando={testando === 'svm'} onClick={() => testarUrl('Short-Video-Maker', config.integracoes.short_video_maker.url)} />
-        </div>
-        <Accordion titulo="OpenMontage (fallback de produção)" icone="fas fa-clapperboard">
-          <Campo
-            rotulo="Caminho do CLI OpenMontage"
-            valor={config.integracoes.openmontage.cli_path}
-            onChange={(v) => atualizar((c) => { c.integracoes.openmontage.cli_path = v; })}
-            placeholder="C:\ferramentas\openmontage\openmontage.exe"
-          />
-        </Accordion>
-      </Cartao>
-
-      {/* Upload YouTube */}
-      <Cartao titulo="Upload YouTube" icone="fab fa-youtube">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Campo
-            rotulo="Uploader — URL (YouTube-Video-Upload-Frontend-Api)"
-            valor={config.integracoes.youtube_upload.url}
-            onChange={(v) => atualizar((c) => { c.integracoes.youtube_upload.url = v; })}
-            placeholder="http://localhost:3000"
-          />
-          <CampoSecreto
-            rotulo="Uploader — API Key"
-            configurado={!!config.integracoes.youtube_upload.api_key_configurado}
-            onChange={(v) => atualizar((c) => { c.integracoes.youtube_upload.api_key = v; })}
-          />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <label className="flex items-center gap-2 text-sm text-gray-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={config.integracoes.youtube_upload.modo === 'nao_listado_1h_publico'}
-              onChange={(e) =>
-                atualizar((c) => {
-                  c.integracoes.youtube_upload.modo = e.target.checked ? 'nao_listado_1h_publico' : 'direto_publico';
-                })
-              }
-              className="w-4 h-4 accent-indigo-500"
-            />
-            Não listado → 1h → público
-          </label>
-          <CampoNum
-            rotulo="Limite diário"
-            valor={config.integracoes.youtube_upload.limite_diario}
-            onChange={(v) => atualizar((c) => { c.integracoes.youtube_upload.limite_diario = v; })}
-          />
-          <CampoNum
-            rotulo="Espera p/ publicar (horas)"
-            valor={config.integracoes.youtube_upload.espera_publicacao_horas}
-            onChange={(v) => atualizar((c) => { c.integracoes.youtube_upload.espera_publicacao_horas = v; })}
-          />
-        </div>
-        <AcaoTestar rotulo="Testar uploader" carregando={testando === 'up'} onClick={() => testarUrl('Uploader', config.integracoes.youtube_upload.url)} />
-        <Accordion titulo="Fallback: youtube-uploader-mcp" icone="fas fa-shuffle">
-          <Campo
-            rotulo="Caminho do youtube-uploader-mcp"
-            valor={config.integracoes.youtube_upload.uploader_mcp_path}
-            onChange={(v) => atualizar((c) => { c.integracoes.youtube_upload.uploader_mcp_path = v; })}
-            placeholder="Caminho do CLI (fallback)"
-          />
-        </Accordion>
       </Cartao>
 
       {/* Extratores */}

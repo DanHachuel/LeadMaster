@@ -6,7 +6,7 @@ const ESTILOS: Record<string, string> = {
   em_contato: 'bg-amber-100 text-amber-800',
   proposta: 'bg-violet-100 text-violet-800',
   fechado: 'bg-green-100 text-green-800',
-  // Status de job do pipeline e campanhas
+  // Status de campanhas e genéricos
   rascunho: 'bg-gray-100 text-gray-600',
   em_andamento: 'bg-blue-100 text-blue-800',
   pausado: 'bg-amber-100 text-amber-800',

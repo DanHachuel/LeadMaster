@@ -301,7 +301,7 @@ function cmdInstall(args) {
   console.log('');
   ensureHome(home);
   console.log(`✓ Pasta de dados pronta: ${home}`);
-  console.log(`  (leads, campanhas, pipeline e configuração ficam em "${path.join(home, 'storage')}")`);
+  console.log(`  (leads, campanhas e configuração ficam em "${path.join(home, 'storage')}")`);
 
   const python = detectPython();
   if (!python) {

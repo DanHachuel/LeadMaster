@@ -3,7 +3,6 @@
 import type {
   AppConfig,
   Campanha,
-  JobPipeline,
   Lead,
   Metricas,
   ResultadoExtracao,
@@ -54,7 +53,6 @@ export const api = {
       sistema: string;
       dist_frontend: boolean;
       storage: string;
-      uploads_hoje: number;
       integracoes: Record<string, boolean>;
     }>('/doctor'),
   shutdown: () => req<{ ok: boolean }>('/shutdown', corpo({})),
@@ -89,15 +87,6 @@ export const api = {
     pausar: (id: string) => req<{ ok: boolean; mensagem: string }>(`/campaigns/${id}/pause`, corpo({})),
     parar: (id: string) => req<{ ok: boolean; mensagem: string }>(`/campaigns/${id}/stop`, corpo({})),
     remover: (id: string) => req<{ ok: boolean }>(`/campaigns/${id}`, { method: 'DELETE' }),
-  },
-
-  // Pipeline de vídeos
-  pipeline: {
-    listar: () => req<JobPipeline[]>('/pipeline'),
-    criar: (dados: { tema: string; titulo?: string; tom?: string; duracao_min?: number; keyword_seo?: string; formatos?: string[] }) =>
-      req<JobPipeline>('/pipeline', corpo(dados)),
-    agir: (id: string, acao: 'iniciar' | 'pausar' | 'parar' | 'repetir') =>
-      req<{ ok: boolean; mensagem: string }>(`/pipeline/${id}/actions`, corpo({ acao })),
   },
 
   // Extratores

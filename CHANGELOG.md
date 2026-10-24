@@ -6,6 +6,34 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.01] — 2026-10-23
+
+### Removido
+
+- **Pipeline de vídeos faceless** — o LeadMaster agora é 100% focado em prospecção
+  (CRM, extratores de leads e agentes de IA). Removidos:
+  - Aba lateral "Pipeline de Vídeos", página e rota `/pipeline`.
+  - Integrações com MoneyPrinterTurbo, Short-Video-Maker, OpenMontage e upload para
+    YouTube: serviços backend, endpoints `/api/pipeline`, cards e testes em
+    Ferramentas, menções no Painel, tutorial do header, FAQ do Suporte e
+    diagnóstico.
+  - Motor do pipeline, agendador de publicação e contadores diários de upload.
+  - `pipeline.json` do armazenamento local — removido automaticamente das
+    instalações existentes, junto com as chaves de vídeo do `config.json`
+    (`integracoes.moneyprinter`, `short_video_maker`, `openmontage`,
+    `youtube_upload`, `uploads`) e o evento de webhook `video.publicado`.
+
+### Adicionado
+
+- Migração automática de configuração: chaves de vídeo de versões antigas são
+  limpas na primeira execução da nova versão.
+- Card "Status da Conexão" do Painel passa a mostrar LLM e OpenOutreach.
+
+### Alterado
+
+- Backend de desenvolvimento (uvicorn) agora usa a porta **8010** — a 8000 costuma
+  ser usada por outros serviços locais (ex.: PandaNews), o que causava conflito.
+
 ## [0.1.00] — 2026-10-23
 
 ### Adicionado

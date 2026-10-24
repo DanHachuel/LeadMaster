@@ -11,7 +11,6 @@ import { Leads } from './pages/Leads';
 import { CRM } from './pages/CRM';
 import { Disparos } from './pages/Disparos';
 import { Extratores } from './pages/Extratores';
-import { Pipeline } from './pages/Pipeline';
 import { Agentes } from './pages/Agentes';
 import { Ferramentas } from './pages/Ferramentas';
 import { Webhook } from './pages/Webhook';
@@ -25,7 +24,6 @@ const TITULOS: Record<string, string> = {
   '/extratores': 'Extratores de Leads',
   '/disparos': 'Disparos',
   '/crm': 'CRM — Kanban',
-  '/pipeline': 'Pipeline de Vídeos Faceless',
   '/webhook': 'Webhook',
   '/suporte': 'Suporte',
 };
@@ -131,7 +129,6 @@ function Layout({
             <Route path="/crm" element={<CRM />} />
             <Route path="/disparos" element={<Disparos />} />
             <Route path="/extratores" element={<Extratores />} />
-            <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/agentes" element={<Agentes />} />
             <Route path="/ferramentas" element={<Ferramentas onConfigSalva={onConfigSalva} />} />
             <Route path="/webhook" element={<Webhook />} />

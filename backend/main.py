@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from services import agents, crm_agent, extractors, llm, moneyprinter, pipeline, short_video_maker, storage, youtube_upload
+from services import agents, crm_agent, extractors, llm, storage
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
@@ -35,14 +35,11 @@ def _versao() -> str:
 
 
 VERSION = _versao()
-engine = pipeline.PipelineEngine()
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     storage.ensure_seeds()
-    engine.recuperar()
-    engine.iniciar_agendador()
     yield
 
 
@@ -87,19 +84,6 @@ class CampaignIn(BaseModel):
     canal: str = "texto"
     template: str = "texto"
     lead_ids: list[str] = []
-
-
-class JobIn(BaseModel):
-    tema: str = Field(min_length=1)
-    titulo: str = ""
-    tom: str = "informativo"
-    duracao_min: int = 8
-    keyword_seo: str = ""
-    formatos: list[str] = ["wide", "shorts"]
-
-
-class AcaoIn(BaseModel):
-    acao: str
 
 
 class GoogleMapsIn(BaseModel):
@@ -156,12 +140,9 @@ def health():
 @app.get("/api/doctor")
 def doctor():
     integracoes = {
-        "moneyprinter": moneyprinter.verificar(),
-        "short_video_maker": short_video_maker.verificar(),
-        "uploader_youtube": youtube_upload.verificar(),
         "llm_configurado": llm.configurado(),
-        "openmontage": bool(storage.get_config()["integracoes"]["openmontage"].get("cli_path")),
         "openoutreach": agents.disparo_configurado(),
+        "pipecat": bool(storage.get_config()["integracoes"]["pipecat"].get("url")),
     }
     return {
         "ok": True,
@@ -170,7 +151,6 @@ def doctor():
         "sistema": platform.platform(),
         "dist_frontend": FRONTEND_DIST.exists(),
         "storage": str(storage.storage_dir()),
-        "uploads_hoje": youtube_upload.contagem_hoje(),
         "integracoes": integracoes,
     }
 
@@ -192,14 +172,10 @@ def metrics():
     enviadas = sum(int(c.get("enviadas", 0)) for c in campaigns)
     erros = sum(int(c.get("erros", 0)) for c in campaigns)
     total_envios = enviadas + erros
-    jobs = storage.list_jobs()
 
     return {
         "conexao": {
             "geral": True,  # o backend local responde => conectado
-            "moneyprinter": moneyprinter.verificar(),
-            "short_video_maker": short_video_maker.verificar(),
-            "uploader_youtube": youtube_upload.verificar(),
             "llm": llm.configurado(),
             "openoutreach": agents.disparo_configurado(),
         },
@@ -213,10 +189,6 @@ def metrics():
             for etapa in ("leads", "em_contato", "proposta", "fechado")
         },
         "campanhas": {"enviadas": enviadas, "erros": erros, "total": len(campaigns)},
-        "pipeline": {
-            "ativos": sum(1 for j in jobs if j.get("status") in ("em_andamento", "pausado")),
-            "concluidos": sum(1 for j in jobs if j.get("status") == "concluido"),
-        },
         "perfil": storage.get_config().get("perfil", {}),
     }
 
@@ -346,34 +318,6 @@ def remover_campanha(campaign_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Pipeline de vídeos
-# ---------------------------------------------------------------------------
-
-@app.get("/api/pipeline")
-def listar_pipeline():
-    return engine.listar()
-
-
-@app.post("/api/pipeline", status_code=201)
-def criar_job(job_in: JobIn):
-    try:
-        return engine.criar_job(job_in.model_dump())
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-
-@app.post("/api/pipeline/{job_id}/actions")
-def agir_pipeline(job_id: str, acao_in: AcaoIn):
-    try:
-        resultado = engine.agir(job_id, acao_in.acao)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    if not resultado.get("ok"):
-        raise HTTPException(400, resultado.get("mensagem", "Ação não permitida."))
-    return resultado
-
-
-# ---------------------------------------------------------------------------
 # Extratores
 # ---------------------------------------------------------------------------
 
@@ -447,11 +391,7 @@ def testar_integracao(dados: IntegracaoTestIn):
 @app.get("/api/integrations/status")
 def status_integracoes():
     return {
-        "moneyprinter": moneyprinter.verificar(),
-        "short_video_maker": short_video_maker.verificar(),
-        "uploader_youtube": youtube_upload.verificar(),
         "llm": llm.configurado(),
-        "openmontage": bool(storage.get_config()["integracoes"]["openmontage"].get("cli_path")),
         "openoutreach": agents.disparo_configurado(),
         "pipecat": bool(storage.get_config()["integracoes"]["pipecat"].get("url")),
     }
@@ -517,6 +457,9 @@ if FRONTEND_DIST.exists():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str):
+        # Rotas de API inexistentes devolvem 404 JSON (não a página do SPA).
+        if full_path.startswith("api/") or full_path == "api":
+            raise HTTPException(404, f"Rota /{full_path} não existe.")
         alvo = FRONTEND_DIST / full_path
         if full_path and alvo.is_file():
             return FileResponse(alvo)

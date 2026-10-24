@@ -112,7 +112,7 @@ function AgenteDisparo() {
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Template — áudio (roteiro de gravação)</label>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Template — áudio (texto para gravação)</label>
           <textarea
             value={templates.audio}
             onChange={(e) => setTemplates({ ...templates, audio: e.target.value })}

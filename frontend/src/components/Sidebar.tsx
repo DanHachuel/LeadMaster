@@ -35,7 +35,6 @@ const NAVEGACAO: { secao?: string; itens: ItemNav[] }[] = [
     itens: [
       { para: '/disparos', icone: 'fas fa-bullhorn', rotulo: 'Disparos' },
       { para: '/crm', icone: 'fas fa-columns', rotulo: 'CRM' },
-      { para: '/pipeline', icone: 'fas fa-video', rotulo: 'Pipeline de Vídeos' },
     ],
   },
   {

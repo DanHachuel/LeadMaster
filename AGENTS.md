@@ -1,9 +1,9 @@
 # AGENTS.md — Regras do Projeto LeadMaster
 
 Regras obrigatórias para qualquer agente (humano ou IA) trabalhando neste repositório.
-O LeadMaster é um **SaaS local de prospecção e automação de conteúdo**: CRM, extratores de
-leads, agentes de IA e pipeline completo de geração de vídeos faceless (YouTube e Shorts),
-instalável via `npx` e 100% local.
+O LeadMaster é um **SaaS local de prospecção**: CRM, extratores de leads e agentes de
+IA — instalável via `npx` e 100% local. **Não faz parte do produto:** produção de
+vídeos, upload para YouTube ou qualquer integração com sistemas de vídeo.
 
 ---
 
@@ -18,8 +18,10 @@ instalável via `npx` e 100% local.
 - **Portas:** a UI/API local usa a porta padrão **5055** (`UI_PORT`); se estiver ocupada,
   o launcher avança automaticamente (5056, 5057, ...) até encontrar uma porta livre. Em
   modo dev, a UI (Vite) também inicia em 5055 com auto-incremento e o backend uvicorn
-  fica em 8000 (proxy `/api`).
-- **Proibido:** Streamlit.
+  fica em **8010** (proxy `/api`; a 8000 é evitada por conflitar com outros serviços
+  locais comuns).
+- **Proibido:** Streamlit. Sistemas de vídeo (MoneyPrinterTurbo, Short-Video-Maker,
+  OpenMontage, uploaders de YouTube) são **proibidos** no LeadMaster.
 
 ## 2. Estrutura do Repositório
 
@@ -35,20 +37,14 @@ LeadMaster/
 ├── backend/                             # FastAPI
 │   ├── main.py                          # Rotas da API + serving da UI (dist)
 │   ├── services/                        # Integrações e regras de negócio
-│   │   ├── moneyprinter.py              # MoneyPrinterTurbo (localhost:8080)
-│   │   ├── short_video_maker.py         # Short-Video-Maker (localhost:3123)
-│   │   ├── openmontage.py               # OpenMontage via CLI
-│   │   ├── youtube_upload.py            # Upload (não listado → 1h → público)
 │   │   ├── crm_agent.py                 # Agente de CRM (sugestões/enriquecimento)
 │   │   ├── extractors.py                # Google Maps / Instagram / CNPJ
 │   │   ├── agents.py                    # Agente de disparo e atendimento
 │   │   ├── llm.py                       # LLM (OpenAI-compatível)
-│   │   ├── pipeline.py                  # Motor do pipeline de vídeos
 │   │   └── storage.py                   # Persistência JSON local
 └── storage/                             # Dados locais (ignorados pelo git)
     ├── leads.json
     ├── campaigns.json
-    ├── pipeline.json
     └── config.json
 ```
 
@@ -57,7 +53,7 @@ LeadMaster/
 - A pasta de dados (**home**) resolve nesta ordem: flag `--home` > variável
   `LEADMASTER_HOME` > `Documents/REPOSITORIO/LeadMaster` > `~/.leadmaster`.
 - Toda persistência ocorre em `<home>/storage`: `leads.json`, `campaigns.json`,
-  `pipeline.json`, `config.json`.
+  `config.json`.
 - Sementes (seeds) são criadas automaticamente pelo backend na primeira execução.
 - **Nunca** persistir dados em nuvem. **Nunca** commitar conteúdo de `storage/`.
 
@@ -65,10 +61,6 @@ LeadMaster/
 
 | Integração | Endpoint padrão | Uso |
 |---|---|---|
-| MoneyPrinterTurbo | `POST http://localhost:8080/api/v1/videos` | Produção wide 16:9 |
-| Short-Video-Maker | `POST http://localhost:3123/api/short-video` | Produção Shorts 9:16 |
-| OpenMontage | CLI local configurável | Fallback de produção |
-| Upload YouTube | Serviço local configurável (primário) + `youtube-uploader-mcp` (fallback) | Upload não listado → aguarda 1h → público (limite 50/dia) |
 | Google Maps | `gosom/google-maps-scraper` via CLI | Extração de leads |
 | Instagram | `lucasoal/igmapper` via CLI | Extração de leads |
 | CNPJ | BrasilAPI + provedor de busca configurável + `D4Vinci/Scrapling` (profundo) | Extração de leads |
@@ -136,14 +128,15 @@ indigo/purple apenas na ação principal.
 
 **As 7 Leis de UX são requisitos de implementação:**
 
-1. **Lei de Fitts** — botões primários ("Iniciar Novo Vídeo", "Salvar") grandes e de fácil
+1. **Lei de Fitts** — botões primários ("Nova Campanha", "Salvar") grandes e de fácil
    acesso.
 2. **Lei de Hick** — configurações avançadas escondidas em menus expansíveis (accordions).
-3. **Efeito Zeigarnik** — barras de progresso visíveis no pipeline de vídeos e no
-   preenchimento de leads.
+3. **Efeito Zeigarnik** — barras de progresso visíveis no preenchimento de leads e no
+   andamento das campanhas.
 4. **Lei de Jakob** — consistência visual com o protótipo (menu lateral fixo, cards,
    ícones FontAwesome).
-5. **Gradiente de Meta** — mensagens motivacionais ("Faltam 2 etapas para o upload").
+5. **Gradiente de Meta** — mensagens motivacionais ("Faltam 2 campos para o lead ficar
+   completo").
 6. **Efeito von Restorff** — botão de ação principal destacado com gradiente
    indigo/purple sobre fundo neutro.
 7. **Lei de Miller** — métricas relacionadas agrupadas em um único bloco visual (cards).
@@ -164,4 +157,4 @@ indigo/purple apenas na ação principal.
 1. `npm --prefix frontend run build` — build limpo (tsc + vite).
 2. `python -m py_compile` em todos os `.py` do backend (ou `python -m compileall backend`).
 3. Subir backend (`python -m uvicorn main:app` em `backend/`) e conferir `/api/health`.
-4. Fluxo manual: criar lead → mover no Kanban → criar job de vídeo → iniciar/pausar.
+4. Fluxo manual: criar lead → mover no Kanban → criar campanha → iniciar.
