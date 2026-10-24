@@ -21,3 +21,7 @@ Thumbs.db
 *.log
 .vscode/
 .idea/
+
+# Logs de teste locais
+*.log
+*.err
