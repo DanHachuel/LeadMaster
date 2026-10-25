@@ -6,6 +6,30 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.03] — 2026-10-25
+
+### Adicionado
+
+- **Páginas legais e de verificação** (`legal/`), baseadas no layout do AutoPost-Lunga:
+  - `legal/index.html` — página de apresentação/verificação para APIs de plataformas
+    (TikTok, YouTube, Pinterest, Meta): funcionalidades do LeadMaster (CRM Kanban,
+    extratores de leads, agentes de IA e pipeline de vídeos faceless), integrações via
+    APIs oficiais e links para os documentos legais.
+  - `legal/privacy.html` — Política de Privacidade em português (Brasil) com conformidade
+    explícita à LGPD (Lei 13.709/2018): dados coletados (e-mail, leads prospectados, uso,
+    cookies, tokens de API), finalidades, armazenamento 100% local (JSON), bases legais,
+    compartilhamento (plataformas via APIs oficiais e provedores de LLM), direitos do
+    titular (art. 18), segurança, retenção e encarregado (DPO).
+  - `legal/terms.html` — Termos de Uso em português (Brasil): aceitação, descrição do
+    serviço ("como está"), responsabilidades do usuário (conteúdo gerado, credenciais,
+    LGPD e termos de plataformas terceiras), usos proibidos (spam/assédio), limitação de
+    responsabilidade (bloqueios e penalidades de plataformas), propriedade intelectual
+    (uso pessoal, vedada revenda), foro do desenvolvedor (Brasil) e referência à
+    Política de Privacidade.
+  - Páginas responsivas (HTML5 semântico, CSS embutido, favicon do urso), com rodapé
+    de verificação para plataformas e contato do desenvolvedor.
+  - Pasta `legal/` incluída no pacote NPM (`files`).
+
 ## [0.1.02] — 2026-10-24
 
 ### Corrigido

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeadMaster - Automação de Prospecção e Conteúdo</title>
+    <meta name="description" content="LeadMaster: ferramenta local de automação para prospecção de leads e publicação de conteúdo em redes sociais via APIs oficiais (YouTube, TikTok, Instagram, Pinterest, Meta).">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231e1b4b'/%3E%3Ccircle cx='31' cy='26' r='14' fill='%23d97706'/%3E%3Ccircle cx='69' cy='26' r='14' fill='%23d97706'/%3E%3Ccircle cx='31' cy='26' r='7' fill='%237c3a0a'/%3E%3Ccircle cx='69' cy='26' r='7' fill='%237c3a0a'/%3E%3Cellipse cx='50' cy='60' rx='32' ry='28' fill='%23d97706'/%3E%3Cellipse cx='50' cy='69' rx='15.5' ry='11.5' fill='%23fde68a'/%3E%3Ccircle cx='38.5' cy='53' r='4.4' fill='%231e1b4b'/%3E%3Ccircle cx='61.5' cy='53' r='4.4' fill='%231e1b4b'/%3E%3Cellipse cx='50' cy='63.5' rx='5.2' ry='4' fill='%231e1b4b'/%3E%3C/svg%3E">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        .badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 50px;
+            display: inline-block;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+        h1 { color: #333; font-size: 2.5em; margin-bottom: 10px; }
+        h2 { color: #444; margin: 25px 0 15px 0; font-size: 1.8em; }
+        p { color: #666; line-height: 1.6; margin: 10px 0; }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .feature-item {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            border-left: 4px solid;
+            transition: transform 0.2s;
+        }
+        .feature-item:hover { transform: translateY(-5px); }
+        .feature-crm { border-left-color: #4f46e5; }
+        .feature-extractores { border-left-color: #16a34a; }
+        .feature-agentes { border-left-color: #d97706; }
+        .feature-pipeline { border-left-color: #dc2626; }
+        .api-youtube { border-left-color: #FF0000; }
+        .api-tiktok { border-left-color: #000000; }
+        .api-instagram { border-left-color: #E1306C; }
+        .api-pinterest { border-left-color: #E60023; }
+        .api-meta { border-left-color: #1877F2; }
+        .feature-item h3 { margin-bottom: 10px; font-size: 1.4em; }
+        .feature-item p { color: #666; line-height: 1.5; margin: 10px 0; }
+        code { background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+        .apis {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        .links {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            text-align: center;
+        }
+        .links a { color: #667eea; text-decoration: none; margin: 0 15px; font-weight: 500; }
+        .links a:hover { text-decoration: underline; }
+        footer { text-align: center; color: rgba(255,255,255,0.8); margin-top: 30px; }
+        .contact {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        @media (max-width: 600px) {
+            .card { padding: 25px; }
+            h1 { font-size: 1.8em; }
+            h2 { font-size: 1.5em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="badge">⚡ Automação de Prospecção e Conteúdo</div>
+            <h1>LeadMaster</h1>
+            <p style="font-size: 1.2em; color: #666; margin-bottom: 20px;">
+                Ferramenta local de automação para prospecção de leads e publicação de conteúdo
+                em redes sociais (YouTube, TikTok, Instagram, Pinterest e Meta), utilizando
+                exclusivamente APIs oficiais.
+            </p>
+            <p>
+                O LeadMaster é um SaaS local (instalável via <code>npx</code>) que unifica CRM,
+                extratores de leads, agentes de IA e um pipeline de produção de conteúdo — com
+                todos os dados armazenados 100% na máquina do usuário, sem nuvem.
+            </p>
+
+            <div class="feature-grid">
+                <div class="feature-item feature-crm">
+                    <h3>🗂️ CRM com Kanban</h3>
+                    <p>Gestão completa de leads com funil arrastável
+                    (<em>Leads → Em contato → Proposta → Fechado</em>), importação em massa e
+                    agente de IA que sugere movimentações e enriquece cadastros.</p>
+                </div>
+
+                <div class="feature-item feature-extractores">
+                    <h3>🕸️ Extratores de Leads</h3>
+                    <p>Extração de contatos comerciais públicos do <strong>Google Maps</strong>,
+                    <strong>Instagram</strong> e <strong>CNPJ</strong> (BrasilAPI e provedores públicos),
+                    com pré-visualização antes da importação.</p>
+                </div>
+
+                <div class="feature-item feature-agentes">
+                    <h3>🤖 Agentes de IA</h3>
+                    <p>Agente de disparo com templates personalizáveis (texto e áudio) e agente
+                    de atendimento por texto ou voz — conectados a LLMs (APIs OpenAI-compatíveis)
+                    e ao OpenOutreach.</p>
+                </div>
+
+                <div class="feature-item feature-pipeline">
+                    <h3>🎬 Pipeline de Vídeos Faceless</h3>
+                    <p>Geração de roteiros com IA, produção de vídeos no formato
+                    <strong>wide 16:9</strong> e <strong>shorts 9:16</strong> e upload automático
+                    para o YouTube (não listado → público), respeitando os limites das APIs oficiais.</p>
+                </div>
+            </div>
+
+            <h2>🔧 Como funciona</h2>
+            <p>
+                O LeadMaster roda localmente no computador do usuário e orquestra todo o fluxo:
+                captação de leads → gestão no CRM → contato via agentes de IA → produção de
+                conteúdo → publicação nas redes sociais.
+            </p>
+            <p><strong>Fluxo completo:</strong> extração/importação de leads → CRM Kanban →
+            disparo de mensagens → geração de roteiro com IA → produção do vídeo → upload
+            via API oficial da plataforma (com as configurações de privacidade definidas pelo usuário).</p>
+
+            <h2>📡 Integrações via APIs oficiais</h2>
+            <p>
+                O LeadMaster utiliza apenas <strong>APIs oficiais</strong> das plataformas,
+                com autenticação OAuth e tokens fornecidos pelo próprio usuário:
+            </p>
+            <div class="feature-grid">
+                <div class="feature-item api-youtube">
+                    <h3>▶️ YouTube</h3>
+                    <p><strong>API:</strong> YouTube Data API v3</p>
+                    <p><strong>Escopos:</strong> <code>youtube.upload</code></p>
+                    <p>Upload automático de vídeos (wide e shorts) com título, descrição e
+                    controle de privacidade (público / não listado / privado).</p>
+                </div>
+
+                <div class="feature-item api-tiktok">
+                    <h3>📱 TikTok</h3>
+                    <p><strong>API:</strong> Content Posting API</p>
+                    <p><strong>Escopos:</strong> <code>user.info.basic</code>, <code>video.upload</code>, <code>video.publish</code></p>
+                    <p>Publicação de vídeos com revisão antes do envio, respeitando os
+                    limites e políticas da plataforma.</p>
+                </div>
+
+                <div class="feature-item api-instagram">
+                    <h3>📸 Instagram</h3>
+                    <p><strong>API:</strong> Instagram Graph API</p>
+                    <p><strong>Escopos:</strong> <code>instagram_basic</code>, <code>instagram_content_publish</code>, <code>pages_show_list</code></p>
+                    <p>Publicação de conteúdo (imagens, Reels e vídeos) em contas
+                    comerciais próprias do usuário.</p>
+                </div>
+
+                <div class="feature-item api-pinterest">
+                    <h3>📌 Pinterest</h3>
+                    <p><strong>API:</strong> Pinterest API v5</p>
+                    <p><strong>Escopos:</strong> <code>boards:read</code>, <code>boards:write</code>, <code>pins:read</code>, <code>pins:write</code></p>
+                    <p>Criação automatizada de Pins com imagens ou vídeos, incluindo
+                    link e descrição personalizados.</p>
+                </div>
+
+                <div class="feature-item api-meta">
+                    <h3>👥 Meta (Facebook)</h3>
+                    <p><strong>API:</strong> Meta Graph API</p>
+                    <p><strong>Escopos:</strong> <code>pages_manage_posts</code>, <code>pages_read_engagement</code>, <code>publish_video</code></p>
+                    <p>Publicação de conteúdo em Páginas do Facebook gerenciadas pelo
+                    próprio usuário.</p>
+                </div>
+            </div>
+            <p style="font-size: 0.9em; color: #888;">
+                Publicações são feitas somente nas contas do próprio usuário, mediante autenticação
+                explícita, e o conteúdo é sempre revisável antes de ser enviado.
+            </p>
+
+            <div class="links">
+                <a href="privacy.html">🔒 Política de Privacidade</a> |
+                <a href="terms.html">📜 Termos de Uso</a>
+            </div>
+
+            <div class="contact">
+                <strong>📧 Desenvolvedor:</strong> Dan Hachuel<br>
+                <strong>📩 Contato:</strong> <a href="mailto:danchannels96@gmail.com">danchannels96@gmail.com</a><br>
+                <strong>📍 Propósito:</strong> aplicação pessoal para automação de prospecção e
+                publicação de conteúdo nas minhas próprias contas de redes sociais.
+            </div>
+        </div>
+        <footer>
+            <p>© 2026 LeadMaster | Este site é usado para verificação de aplicação junto às plataformas (TikTok, YouTube, Pinterest, Meta, etc.)</p>
+        </footer>
+    </div>
+</body>
+</html>

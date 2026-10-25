@@ -1,6 +1,6 @@
 {
   "name": "@danhachuel/leadmaster",
-  "version": "0.1.02",
+  "version": "0.1.03",
   "description": "SaaS local de prospecção e automação: CRM, extratores de leads e agentes de IA — 100% local.",
   "license": "MIT",
   "author": "Dan Hachuel",
@@ -15,6 +15,7 @@
     "scripts/cli.mjs",
     "backend/",
     "frontend/dist/",
+    "legal/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
