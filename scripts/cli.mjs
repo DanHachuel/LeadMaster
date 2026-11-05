@@ -316,7 +316,8 @@ function cmdInstall(args) {
 
   console.log('');
   console.log('Instalação concluída. Para usar (comando único):');
-  console.log(`  npx --yes @danhachuel/leadmaster@${VERSION}`);
+  console.log('  npx --yes @danhachuel/leadmaster@latest');
+  console.log(`  (equivalente fixado: npx --yes @danhachuel/leadmaster@${VERSION})`);
   console.log('  (o mesmo comando, sem "install", também verifica e prepara tudo sozinho)');
 }
 

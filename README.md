@@ -13,14 +13,14 @@ Requisitos: **Node 18+** e **Python 3.11+** no PATH.
 
 ```cmd
 :: CMD / MobaXterm (Windows)
-npx.cmd --yes --prefer-online @danhachuel/leadmaster@0.1.0 install
-npx.cmd --yes --prefer-online @danhachuel/leadmaster@0.1.0
+npx.cmd --yes --prefer-online @danhachuel/leadmaster@latest install
+npx.cmd --yes --prefer-online @danhachuel/leadmaster@latest
 ```
 
 ```bash
 # Linux / macOS / PowerShell
-npx --yes @danhachuel/leadmaster@0.1.0 install
-npx --yes @danhachuel/leadmaster@0.1.0
+npx --yes @danhachuel/leadmaster@latest install
+npx --yes @danhachuel/leadmaster@latest
 ```
 
 - `install` prepara a pasta de dados e instala as dependências Python.

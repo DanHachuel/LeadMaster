@@ -6,6 +6,17 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.04] — 2026-11-05
+
+### Corrigido
+
+- **Instruções de instalação fixadas em versão antiga** — o README (GitHub e pacote NPM)
+  e a mensagem final do `install` usavam `@0.1.0`, instalando uma versão obsoleta.
+  - README e saída do launcher agora usam a tag **`@latest`** (CMD/MobaXterm e normal),
+    com a versão exata exibida ao lado na mensagem do `install`.
+  - AGENTS.md documenta a regra: instruções permanentes sempre `@latest`; comunicação
+    de release informa também a versão canônica do registry.
+
 ## [0.1.03] — 2026-10-25
 
 ### Adicionado
