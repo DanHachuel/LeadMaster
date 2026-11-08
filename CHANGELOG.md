@@ -23,10 +23,10 @@ normaliza para a forma canônica (ex.: `0.1.0`).
     0 no Linux/macOS.
   - `backend/services/extractors.py`: todas as execuções de CLI (Google Maps
     Scraper, igmapper, Scrapling) passam a usar as flags isoladas.
-  - Testes `backend/tests/test_process_flags.py` (pytest) verificam as flags
-    com `os.name` e `subprocess.run` mockados — passam no GitHub Actions
-    (Linux, onde o caso POSIX roda nativamente) e no Windows local (caso
-    POSIX é pulado porque fingir `posix` quebra `pathlib`).
+  - Testes `backend/tests/test_process_flags.py` (pytest) verificam as flags sem
+    mockar `os.name` (o que quebraria `pathlib` nas duas direções): o helper
+    recebe a plataforma por parâmetro e os testes mockam o próprio helper —
+    passam idênticos no GitHub Actions (Linux) e no Windows local.
   - CI: novo passo "Run backend tests (pytest)" no workflow de publicação.
 
 ## [0.1.04] — 2026-11-05

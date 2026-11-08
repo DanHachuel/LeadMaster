@@ -3,15 +3,19 @@
 Problema que resolve: quando o terminal (MobaXterm, VS Code, perda de foco)
 envia Ctrl+C, o evento de interrupção (STATUS_CONTROL_C_EXIT / 0xC000013A) é
 propagado a todo o *grupo de processos* do terminal — derrubando launcher E
-workers juntos, corrompendo renders/extrações em andamento.
+workers juntos, corrompendo extrações e trabalhos em andamento.
 
 Solução: cada worker nasce em seu PRÓPRIO grupo de processos no Windows
 (`CREATE_NEW_PROCESS_GROUP`) e sem janela (`CREATE_NO_WINDOW`); assim,
-interrupções de terminal não cascateam para os workers, e quem encerra o
+interrupções de terminal não cascateiam para os workers, e quem encerra o
 worker é o launcher, de forma controlada.
 
 No Linux/macOS o launcher já spawna com `detached: true` (sessão própria) e
 `creationflags` retorna 0 — não há alteração de comportamento.
+
+O parâmetro `so` existe para os testes: assim é possível verificar os dois
+comportamentos sem mockar `os.name` globalmente (o que quebraria `pathlib`
+nas duas direções — fingir "nt" no Linux e "posix" no Windows).
 """
 
 import os
@@ -27,8 +31,10 @@ _WINDOWS_FLAGS = (
 )
 
 
-def creationflags() -> int:
+def creationflags(so: str | None = None) -> int:
     """Flags a passar em subprocess.run/Popen. 0 no Linux/macOS."""
-    if os.name == "nt":
+    if so is None:
+        so = os.name
+    if so == "nt":
         return _WINDOWS_FLAGS
     return 0
