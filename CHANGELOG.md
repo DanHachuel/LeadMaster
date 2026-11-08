@@ -6,6 +6,23 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.07] — 2026-11-08
+
+### Adicionado
+
+- **Regra permanente (AGENTS.md): PROIBIDO criar versões que abram telas de
+  CMD/terminal no computador do usuário.** Nenhum popup de console pode aparecer
+  ao rodar o LeadMaster; requisitos técnicos:
+  - Node (`child_process`): sempre `windowsHide: true`; `.cmd`/`.bat` via
+    `shell: true` + `windowsHide: true`;
+  - Python (`subprocess`): sempre `creationflags` com `CREATE_NO_WINDOW`
+    (`services/flags.py`);
+  - saída sempre em pipes/logs — nunca janelas interativas.
+  - QA inclui verificação item a item dos spawns.
+  - Estado do código auditado: todos os spawns do launcher já cumprem
+    (`windowsHide`) e os subprocessos Python usam `creationflags` — nenhuma
+    alteração de código foi necessária.
+
 ## [0.1.06] — 2026-11-08
 
 ### Corrigido

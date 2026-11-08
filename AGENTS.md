@@ -160,6 +160,15 @@ indigo/purple apenas na ação principal.
 - Comentários e textos de UI em português do Brasil.
 - Toda nova página/rota frontend precisa de entrada correspondente na Sidebar.
 - `GET /api/config` jamais expõe segredos (campo mascarado + flag `_configurado`).
+- 🚫 **PROIBIDO criar versões que abram telas de CMD/terminal no computador do usuário** —
+  regra permanente e absoluta: nenhum popup de console pode aparecer ao rodar o
+  LeadMaster. Para cumpri-la, **todo** spawn de subprocesso deve:
+  - **Node** (`child_process`): sempre `windowsHide: true`; ao invocar `.cmd`/`.bat`
+    no Windows, usar `shell: true` com `windowsHide: true`;
+  - **Python** (`subprocess`): sempre `creationflags=proc_flags.creationflags()`
+    (inclui `CREATE_NO_WINDOW` no Windows);
+  - saída sempre direcionada a pipes/logs (`stdio` controlado) — nunca janelas
+    interativas.
 
 ## 10. QA antes de commit/push
 
@@ -172,3 +181,6 @@ indigo/purple apenas na ação principal.
    nunca processos de outros projetos locais (ex.: outros apps uvicorn do usuário), e
    nunca deixe instâncias rodando ao final da sessão. O LeadMaster **nunca abre o
    navegador**: apenas imprime a URL no terminal.
+6. **Zero janelas de CMD:** nenhum spawn de subprocesso (Python ou Node) pode abrir
+   popup de console no computador do usuário — `windowsHide: true` (Node) e
+   `creationflags` com `CREATE_NO_WINDOW` (Python) em todos os spawns.
