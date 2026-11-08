@@ -172,25 +172,36 @@ indigo/purple apenas na ação principal.
 
 ## 🚨 REGRA INVIOLÁVEL: ARQUITETURA DO LAUNCHER (anti-travamento no MobaXterm)
 
-O launcher (`scripts/cli.mjs`) NÃO pode ser alterado de forma a remover estas quatro
+O launcher (`scripts/cli.mjs`) NÃO pode ser alterado de forma a remover estas cinco
 proteções — elas impedem o encerramento silencioso do LeadMaster no Windows:
 
 1. **Keep-alive:** o launcher DEVE conter `setInterval(() => {}, 1000);` para manter o
    event loop ativo mesmo sem streams de I/O de console.
-2. **Absorção de sinais no Windows:** `SIGINT` e `SIGHUP` DEVEM ser absorvidos no
+2. **Terminal preso (solução definitiva):** a linha `process.stdin.resume();` DEVE
+   estar presente no `cli.mjs`, logo antes das mensagens finais de sucesso — o
+   processo Node permanece indefinidamente vivo ouvindo a entrada padrão, o prompt
+   do MobaXterm nunca é devolvido e a PTY (e com ela o uvicorn) não é fechada.
+   O launcher NUNCA deve chamar `process.exit(0)` após o sucesso da inicialização
+   (sai naturalmente ou pelos listeners do filho); `process.exit(...)` reside apenas
+   em caminhos de erro acionável, na parada legítima (`SIGTERM`/`SIGBREAK`) e no
+   aviso informativo "já está rodando". O worker Python nunca é criado com
+   `.unref()`; a morte do filho encerra o launcher (`child.on('close')`) e
+   vice-versa (`process.on('exit')`).
+3. **Absorção de sinais no Windows:** `SIGINT` e `SIGHUP` DEVEM ser absorvidos no
    Windows (apenas log `"[LAUNCHER] Sinal absorvido..."`, sem `stop()`/`exit()`) — o
    MobaXterm os envia de forma espúria (perda de foco, minimização). `SIGTERM` e
    `SIGBREAK` **nunca** devem ser absorvidos (são paradas legítimas). No Linux/macOS,
    SIGINT/SIGHUP mantêm o encerramento gracioso.
-3. **Guarda da consola:** a função `guardConsoleStream` NUNCA deve ser removida —
+4. **Guarda da consola:** a função `guardConsoleStream` NUNCA deve ser removida —
    ignora `EPIPE` no evento `'error'` do stream e espelha a saída em
    `storage/logs/launcher_console.log`.
-4. **Isolamento de processos:** o worker Python DEVE ser iniciado com
+5. **Isolamento de processos:** o worker Python DEVE ser iniciado com
    `detached: true` (equivale a `CREATE_NEW_PROCESS_GROUP` no Windows) mantendo
    `windowsHide: true`.
 
 Gate de regressão: `backend/tests/test_launcher_protections.py` falha se qualquer uma
-dessas proteções desaparecer do launcher.
+dessas proteções desaparecer do launcher (inclusive `process.stdin.resume();` ou o uso
+de `.unref()`).
 
 ## 10. QA antes de commit/push
 

@@ -30,6 +30,21 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 
+// ---------------------------------------------------------------------------
+// Erros globais (blindagem anti-encerramento silencioso)
+// Rejeições e exceções não tratadas são APENAS LOGADAS — nunca devem derrubar
+// o launcher sem explicação (era assim que o MobaXterm perdia o processo sem
+// deixar rastro). O launcher só termina pelo fluxo normal: erro acionável,
+// parada legítima (SIGTERM/SIGBREAK) ou morte do servidor Python filho.
+// NUNCA REMOVER (regra inviolável do AGENTS.md).
+// ---------------------------------------------------------------------------
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // Porta padrão da UI/API local; se estiver ocupada, o launcher avança
@@ -372,6 +387,10 @@ function cmdStart(args) {
     const url = `http://127.0.0.1:${porta}`;
     if (jaRodando) {
       console.log(`ℹ LeadMaster já está rodando em ${url} — abra o endereço no navegador.`);
+      // Saída INFORMATIVA (antes de qualquer inicialização própria): não há
+      // servidor filho para supervisionar nem terminal para prender — o
+      // launcher não deve chamar process.exit(0) no caminho de SUCESSO da
+      // inicialização (regra inviolável do AGENTS.md).
       process.exit(0);
       return;
     }
@@ -438,6 +457,14 @@ function cmdStart(args) {
       process.exit(code === null ? 1 : code);
     });
 
+    // Ciclo de vida vinculado (regra inviolável do AGENTS.md): se o Python
+    // cai, o launcher cai junto — nunca fica preso ao terminal sem servidor.
+    // O worker NUNCA é criado com .unref(): o pai não pode morrer sozinho.
+    child.on('close', (code) => {
+      console.log('Servidor encerrado');
+      process.exit(code === null ? 1 : code);
+    });
+
     const stop = () => {
       console.log('\nEncerrando LeadMaster...');
       if (platform() === 'win32' && child.pid) {
@@ -446,6 +473,16 @@ function cmdStart(args) {
         child.kill('SIGTERM');
       }
     };
+
+    // Morte do launcher → morte do filho (e vice-versa, via close acima):
+    // o uvicorn nunca fica órfão no terminal quando o Node é encerrado.
+    process.on('exit', () => {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* filho já encerrou — nada a fazer */
+      }
+    });
 
     console.log(`→ Subindo servidor local em ${url} ...`);
     const health = await waitForHealth(porta, 120000);
@@ -476,9 +513,17 @@ function cmdStart(args) {
       process.on('SIGBREAK', naoAbsorver);
     }
 
-    // Keep-alive: mantém o event loop ativo mesmo sem I/O de console (MobaXterm
-    // minimizado / sem stream ativo) — evita o encerramento silencioso.
+    // Keep-alive (regra inviolável do AGENTS.md): mantém o event loop ativo
+    // mesmo sem I/O de console (MobaXterm minimizado / sem stream ativo).
     setInterval(() => {}, 1000);
+
+    // Terminal preso (regra inviolável do AGENTS.md) — SOLUÇÃO DEFINITIVA:
+    // ao retomar a entrada padrão IMEDIATAMENTE antes das mensagens finais
+    // de sucesso, o Node permanece vivo indefinidamente aguardando qualquer
+    // digitação do usuário. O prompt do MobaXterm NUNCA é devolvido e a PTY
+    // (e com ela o uvicorn) não é fechada. Esta linha NÃO depende de timers
+    // nem de npx — NUNCA REMOVER.
+    process.stdin.resume();
 
     console.log(`✓ LeadMaster no ar em ${url} (dados: ${home})`);
     console.log('');

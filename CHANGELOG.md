@@ -6,6 +6,37 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.11] — 2026-11-08
+
+### Corrigido
+
+- **Launcher ainda devolvia o prompt no MobaXterm — a 0.1.9 não resolveu** — o
+   processo Node encerrava seu event loop logo após imprimir "LeadMaster no ar...",
+   mesmo com o keep-alive `setInterval`. Sem o Node vivo, o MobaXterm fecha a
+   pseudo-console (PTY) e o uvicorn perde o terminal, encerrando junto. Correções
+   definitivas no `scripts/cli.mjs`:
+   - **Terminal preso:** `process.stdin.resume();` inserido **logo antes das
+     mensagens finais de sucesso** — o Node fica indefinidamente vivo ouvindo a
+     entrada padrão, sem depender de timers nem do wrapper do `npx`. O keep-alive
+     `setInterval` permanece como segunda camada de proteção.
+   - **Ciclo de vida vinculado nos dois sentidos:** `child.on('close')` encerra o
+     launcher quando o servidor Python cai (mensagem "Servidor encerrado"), e
+     `process.on('exit')` mata o filho quando o launcher morre — nenhum processo
+     fica órfão. O worker Python continua **sem `.unref()`** (o pai não pode
+     morrer sozinho).
+   - **Erros globais (debug):** handlers `unhandledRejection` e `uncaughtException`
+     logam o erro em vez de derrubar o launcher silenciosamente.
+   - **Sem `process.exit(0)` após o sucesso:** a saída do fluxo principal agora é
+     natural (via listeners do filho); chamadas de `process.exit` permanecem apenas
+     em caminhos de erro acionável, na parada legítima (`SIGTERM`/`SIGBREAK`) e no
+     aviso informativo "já está rodando".
+- **AGENTS.md:** regra inviolável do launcher passa de quatro para **cinco
+   proteções** (nova: *Terminal preso*, incluindo a proibição de `process.exit(0)`
+   após o sucesso e a vedação do `.unref()`).
+- **Gate de regressão reforçado:** `backend/tests/test_launcher_protections.py`
+   falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
+   ciclo de vida vinculado for removido ou se os handlers globais sumirem.
+
 ## [0.1.10] — 2026-11-08
 
 ### Adicionado
