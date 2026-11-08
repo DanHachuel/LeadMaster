@@ -16,6 +16,7 @@ from pathlib import Path
 
 import httpx
 
+from . import flags as proc_flags
 from . import storage
 
 
@@ -61,7 +62,7 @@ def extrair_google_maps(palavra_chave: str, localizacao: str, max_resultados: in
             outdir=str(outdir),
         )
         try:
-            resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, shell=False)
+            resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, shell=False, creationflags=proc_flags.creationflags())
         except FileNotFoundError as e:
             raise ExtratorNaoConfigurado(f"Não foi possível executar o CLI do Google Maps Scraper: {e}") from e
         if resultado.returncode != 0:
@@ -90,7 +91,7 @@ def extrair_instagram(profile_url: str) -> dict:
         args_template = conf.get("igmapper_args", "--profile {url} --outdir {outdir}")
         cmd = [cli] + _formatar_args(args_template, url=profile_url, outdir=str(outdir))
         try:
-            resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=900, shell=False)
+            resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=900, shell=False, creationflags=proc_flags.creationflags())
         except FileNotFoundError as e:
             raise ExtratorNaoConfigurado(f"Não foi possível executar o igmapper: {e}") from e
         if resultado.returncode != 0:
@@ -220,6 +221,7 @@ def enriquecer_com_site(website: str) -> dict:
             text=True,
             timeout=300,
             shell=False,
+            creationflags=proc_flags.creationflags(),
         )
     except FileNotFoundError as e:
         raise ExtratorNaoConfigurado(f"Não foi possível executar o Scrapling: {e}") from e

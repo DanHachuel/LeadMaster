@@ -150,7 +150,13 @@ indigo/purple apenas na ação principal.
   chamadas HTTP somente via `frontend/src/lib/api.ts`.
 - Backend: sem frameworks extras além dos listados em `backend/requirements.txt`;
   escrita de JSON sempre atômica e sob lock (`services/storage.py`);
-  mensagens de erro sempre acionáveis (o que fazer para resolver).
+  mensagens de erro sempre acionáveis (o que fazer para resolver);
+  **todo subprocesso Python usa flags de criação isoladas**
+  (`services/flags.py`: `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` no
+  Windows) e **workers do launcher Node nascem com `detached: true`**
+  (grupo de processos próprio) — assim Ctrl+C do terminal nunca derruba o
+  launcher e os workers em cascata; testes em `backend/tests` (pytest) cobrem
+  as flags nas duas plataformas.
 - Comentários e textos de UI em português do Brasil.
 - Toda nova página/rota frontend precisa de entrada correspondente na Sidebar.
 - `GET /api/config` jamais expõe segredos (campo mascarado + flag `_configurado`).

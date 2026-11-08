@@ -374,6 +374,11 @@ function cmdStart(args) {
       console.warn('⚠ Interface construída não encontrada (frontend/dist).');
     }
 
+    // Workers nascem em grupo de processos próprio (detached: true =
+    // CREATE_NEW_PROCESS_GROUP no Windows): sinais de Ctrl+C do terminal
+    // (MobaXterm, VS Code, perda de foco) matam apenas o launcher — o
+    // servidor Python continua rodando e só é encerrado pelo kill()
+    // controlado abaixo (ou sobrevive para a próxima execução detectar).
     const child = spawn(python.cmd, [...python.args, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(porta), '--no-access-log'], {
       cwd: path.join(PKG_ROOT, 'backend'),
       env: {
@@ -385,6 +390,7 @@ function cmdStart(args) {
         PYTHONIOENCODING: 'utf-8',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
       windowsHide: true,
     });
 

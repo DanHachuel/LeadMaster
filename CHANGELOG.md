@@ -6,6 +6,29 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.05] — 2026-11-08
+
+### Corrigido
+
+- **Encerramento em cascata no Windows (STATUS_CONTROL_C_EXIT / 0xC000013A)** — o
+  launcher Node e os workers Python compartilhavam o mesmo grupo de processos,
+  então Ctrl+C no terminal (MobaXterm, VS Code, perda de foco) derrubava tudo
+  junto, arriscando corromper extrações e trabalhos em andamento.
+  - `scripts/cli.mjs`: o servidor FastAPI é spawnado com **`detached: true`**
+    (no Windows, `CREATE_NEW_PROCESS_GROUP` 0x00000200) — grupo de processos
+    próprio; sinais do terminal não cascateiam para o worker, que só é
+    encerrado pelo `kill()` controlado do launcher.
+  - `backend/services/flags.py` (novo): helper `creationflags()` com
+    `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` (0x08000200) no Windows;
+    0 no Linux/macOS.
+  - `backend/services/extractors.py`: todas as execuções de CLI (Google Maps
+    Scraper, igmapper, Scrapling) passam a usar as flags isoladas.
+  - Testes `backend/tests/test_process_flags.py` (pytest) verificam as flags
+    com `os.name` e `subprocess.run` mockados — passam no GitHub Actions
+    (Linux, onde o caso POSIX roda nativamente) e no Windows local (caso
+    POSIX é pulado porque fingir `posix` quebra `pathlib`).
+  - CI: novo passo "Run backend tests (pytest)" no workflow de publicação.
+
 ## [0.1.04] — 2026-11-05
 
 ### Corrigido
