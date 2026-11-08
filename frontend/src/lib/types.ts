@@ -5,8 +5,8 @@ export type Etapa = 'leads' | 'em_contato' | 'proposta' | 'fechado';
 export const ETAPAS: Etapa[] = ['leads', 'em_contato', 'proposta', 'fechado'];
 
 export const ETAPA_LABEL: Record<Etapa, string> = {
-  leads: 'Leads',
-  em_contato: 'Em contato',
+  leads: 'Novos Leads',
+  em_contato: 'Em Contato',
   proposta: 'Proposta',
   fechado: 'Fechado',
 };

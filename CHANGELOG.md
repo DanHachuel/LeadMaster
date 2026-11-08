@@ -6,6 +6,28 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.08] — 2026-11-08
+
+### Adicionado
+
+- **Módulo CRM Kanban implementado conforme especificação:**
+  - Rotas: `GET /api/crm/leads`, `POST /api/crm/leads` (criação manual) e
+    `PUT /api/crm/leads/{lead_id}/etapa` (movimentação ao soltar o card) —
+    persistência no `leads.json` local (seeds de demonstração mantidos).
+  - Kanban com **@dnd-kit/core + @dnd-kit/sortable** (multi-contêiner):
+    arrastar entre colunas persiste via API; reordenação visual dentro da
+    coluna; soltar fora das colunas reverte o movimento.
+  - Colunas: **Novos Leads → Em Contato → Proposta → Fechado**.
+  - Card mostra Nome, Telefone, Fonte e **Data de Criação**.
+  - Botão **"Adicionar Lead"** (gradiente) com modal de criação (campos
+    avançados em accordion).
+  - UX: card inteiro arrastável (Fitts); **opacity 0.5** no card arrastado e
+    **borda tracejada indigo** na coluna de destino (Zeigarnik); colunas
+    brancas com sombra suave (padrão do Dashboard).
+- **7 novos testes pytest** para as rotas do CRM (`backend/tests/test_crm_routes.py`):
+  listagem, criação, persistência, validação, movimentação, 404 e etapas
+  inválidas — isolados com `LEADMASTER_HOME` temporário.
+
 ## [0.1.07] — 2026-11-08
 
 ### Adicionado

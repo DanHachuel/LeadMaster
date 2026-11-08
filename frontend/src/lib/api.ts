@@ -72,8 +72,12 @@ export const api = {
       req<{ ok: boolean; lead: Lead; notas: string[] }>(`/leads/${id}/enrich`, corpo({})),
   },
 
-  // CRM (agente)
+  // CRM (Kanban: leads por etapa + agente de sugestões)
   crm: {
+    leadsListar: () => req<Lead[]>('/crm/leads'),
+    criarLead: (lead: Partial<Lead>) => req<Lead>('/crm/leads', corpo(lead)),
+    moverLead: (id: string, etapa: string) =>
+      req<Lead>(`/crm/leads/${id}/etapa`, { method: 'PUT', body: JSON.stringify({ etapa }) }),
     sugestoes: () => req<{ sugestoes: SugestaoCrm[] }>('/crm/sugestoes'),
     aplicar: (lead_id: string, para: string) => req<{ ok: boolean; lead: Lead }>('/crm/sugestoes/aplicar', corpo({ lead_id, para })),
   },

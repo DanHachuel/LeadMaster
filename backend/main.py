@@ -296,6 +296,42 @@ def aplicar_sugestao(dados: dict):
 
 
 # ---------------------------------------------------------------------------
+# CRM — Kanban (leads por etapa)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/crm/leads")
+def crm_listar_leads():
+    """Todos os leads (persistidos em leads.json) — usado pelo quadro Kanban."""
+    return storage.list_leads()
+
+
+@app.post("/api/crm/leads", status_code=201)
+def crm_criar_lead(lead_in: LeadIn):
+    """Cria um lead manualmente pelo modal 'Adicionar Lead' do CRM."""
+    lead = lead_in.model_dump()
+    lead["id"] = storage._novo_id()
+    lead["etapa"] = _validar_etapa(lead.get("etapa", "leads"))
+    lead["score"] = lead.get("score") if lead.get("score") is not None else crm_agent.calcular_completude(lead)
+    storage.add_lead(lead)
+    agents.disparar_webhook("lead.criado", {"lead_id": lead["id"], "nome": lead["nome"]})
+    return lead
+
+
+@app.put("/api/crm/leads/{lead_id}/etapa")
+def crm_mover_lead(lead_id: str, dados: dict):
+    """Move um lead de coluna no Kanban (drag-and-drop)."""
+    etapa = dados.get("etapa")
+    if not etapa:
+        raise HTTPException(400, "Informe a etapa de destino.")
+    _validar_etapa(etapa)
+    atualizado = storage.update_lead(lead_id, {"etapa": etapa})
+    if not atualizado:
+        raise HTTPException(404, "Lead não encontrado.")
+    agents.disparar_webhook("lead.etapa", {"lead_id": lead_id, "etapa": etapa, "via": "kanban"})
+    return atualizado
+
+
+# ---------------------------------------------------------------------------
 # Campanhas / Disparos
 # ---------------------------------------------------------------------------
 

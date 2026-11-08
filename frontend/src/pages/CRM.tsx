@@ -4,20 +4,25 @@ import type { Etapa, Lead, SugestaoCrm } from '../lib/types';
 import { ETAPAS, ETAPA_LABEL } from '../lib/types';
 import { KanbanBoard } from '../components/KanbanBoard';
 import { Modal } from '../components/Modal';
+import { Accordion } from '../components/Accordion';
 import { StatusBadge } from '../components/StatusBadge';
 import { useToast } from '../components/Toast';
-import { cn, mascararTelefone } from '../lib/format';
+import { cn, dataHora, mascararTelefone } from '../lib/format';
+
+const VAZIO: Partial<Lead> = { nome: '', telefone: '', email: '', fonte: 'Manual', etapa: 'leads' };
 
 export function CRM() {
   const { toast } = useToast();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [sugestoes, setSugestoes] = useState<SugestaoCrm[] | null>(null);
   const [carregandoSugestoes, setCarregandoSugestoes] = useState(false);
+  const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Lead | null>(null);
+  const [novo, setNovo] = useState<Partial<Lead>>({ ...VAZIO });
   const [observacoes, setObservacoes] = useState('');
 
   const carregar = useCallback(async () => {
-    setLeads(await api.leads.listar());
+    setLeads(await api.crm.leadsListar());
   }, []);
 
   useEffect(() => {
@@ -26,14 +31,30 @@ export function CRM() {
 
   const mover = async (leadId: string, para: Etapa) => {
     const anteriores = leads;
-    // Otimista: move na hora; reverte se a API recusar.
+    // Otimista: move na hora; reverte se a API recusar (PUT /api/crm/leads/{id}/etapa).
     setLeads((atuais) => atuais.map((l) => (l.id === leadId ? { ...l, etapa: para } : l)));
     try {
-      await api.leads.atualizar(leadId, { etapa: para });
+      await api.crm.moverLead(leadId, para);
       toast('sucesso', `Lead movido para "${ETAPA_LABEL[para]}".`);
     } catch (e) {
       setLeads(anteriores);
       toast('erro', e instanceof Error ? e.message : 'Falha ao mover lead.');
+    }
+  };
+
+  const criar = async () => {
+    if (!novo.nome?.trim()) {
+      toast('erro', 'O nome do lead é obrigatório.');
+      return;
+    }
+    try {
+      await api.crm.criarLead({ ...novo, etapa: novo.etapa || 'leads' });
+      toast('sucesso', 'Lead criado com sucesso.');
+      setModalAberto(false);
+      setNovo({ ...VAZIO });
+      await carregar();
+    } catch (e) {
+      toast('erro', e instanceof Error ? e.message : 'Falha ao criar lead.');
     }
   };
 
@@ -90,7 +111,7 @@ export function CRM() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-4 text-sm text-gray-500">
+        <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
           <span>
             <strong className="text-gray-800">{leads.length}</strong> leads no funil
           </span>
@@ -100,26 +121,29 @@ export function CRM() {
             </span>
           ))}
         </div>
-        <button
-          onClick={pedirSugestoes}
-          disabled={carregandoSugestoes}
-          className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90 transition disabled:opacity-60"
-        >
-          <i className={cn('fas fa-wand-magic-sparkles mr-2', carregandoSugestoes && 'fa-spin')} />
-          Sugestões da IA
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={pedirSugestoes}
+            disabled={carregandoSugestoes}
+            className="px-5 py-2.5 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition disabled:opacity-60 shadow-sm"
+          >
+            <i className={cn('fas fa-wand-magic-sparkles mr-2', carregandoSugestoes && 'fa-spin')} />
+            Sugestões da IA
+          </button>
+          {/* Botão primário (Lei de Fitts + von Restorff) */}
+          <button
+            onClick={() => setModalAberto(true)}
+            className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90 transition shadow-sm"
+          >
+            <i className="fas fa-plus mr-2" /> Adicionar Lead
+          </button>
+        </div>
       </div>
 
       <KanbanBoard leads={leads} onMover={mover} onAbrirLead={(lead) => { setEditando(lead); setObservacoes(lead.observacoes || ''); }} />
 
       {/* Painel de sugestões do agente de CRM */}
-      <Modal
-        aberto={sugestoes !== null}
-        onFechar={() => setSugestoes(null)}
-        titulo="Sugestões de movimentação (Agente de CRM)"
-        icone="fas fa-robot"
-        largura="lg"
-      >
+      <Modal aberto={sugestoes !== null} onFechar={() => setSugestoes(null)} titulo="Sugestões de movimentação (Agente de CRM)" icone="fas fa-robot" largura="lg">
         {sugestoes && sugestoes.length === 0 && (
           <p className="text-sm text-gray-500 text-center py-8">
             <i className="fas fa-circle-check text-green-500 text-2xl block mb-3" />
@@ -148,7 +172,54 @@ export function CRM() {
         </div>
       </Modal>
 
-      {/* Edição rápida do card (duplo clique) */}
+      {/* Modal: criar lead */}
+      <Modal aberto={modalAberto} onFechar={() => setModalAberto(false)} titulo="Adicionar Lead" icone="fas fa-user-plus">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Campo rotulo="Nome *" valor={novo.nome || ''} onChange={(v) => setNovo({ ...novo, nome: v })} />
+            <Campo rotulo="Telefone" valor={novo.telefone || ''} onChange={(v) => setNovo({ ...novo, telefone: v })} placeholder="(11) 99999-9999" />
+            <Campo rotulo="E-mail" tipo="email" valor={novo.email || ''} onChange={(v) => setNovo({ ...novo, email: v })} placeholder="contato@empresa.com.br" />
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Coluna inicial</label>
+              <select
+                value={novo.etapa || 'leads'}
+                onChange={(e) => setNovo({ ...novo, etapa: e.target.value as Etapa })}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
+              >
+                {ETAPAS.map((etapa) => (
+                  <option key={etapa} value={etapa}>{ETAPA_LABEL[etapa]}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <Campo rotulo="Fonte" valor={novo.fonte || ''} onChange={(v) => setNovo({ ...novo, fonte: v })} placeholder="Manual, Google Maps, Instagram, CNPJ..." />
+          <Accordion titulo="Campos avançados" icone="fas fa-sliders">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Campo rotulo="Empresa" valor={novo.empresa || ''} onChange={(v) => setNovo({ ...novo, empresa: v })} />
+              <Campo rotulo="Cidade" valor={novo.cidade || ''} onChange={(v) => setNovo({ ...novo, cidade: v })} placeholder="São Paulo/SP" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Observações</label>
+              <textarea
+                value={novo.observacoes || ''}
+                onChange={(e) => setNovo({ ...novo, observacoes: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
+              />
+            </div>
+          </Accordion>
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={() => setModalAberto(false)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button onClick={criar} className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90">
+              <i className="fas fa-save mr-2" /> Salvar
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: detalhes do lead (duplo clique no card) */}
       <Modal aberto={!!editando} onFechar={() => setEditando(null)} titulo="Lead" icone="fas fa-address-card">
         {editando && (
           <div className="space-y-4">
@@ -156,7 +227,7 @@ export function CRM() {
               <div>
                 <p className="text-base font-semibold text-gray-800">{editando.nome}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {mascararTelefone(editando.telefone)} · {editando.fonte}
+                  {mascararTelefone(editando.telefone)} · {editando.fonte} · criado em {dataHora(editando.criado_em)}
                 </p>
               </div>
               <StatusBadge status={editando.etapa} />
@@ -179,16 +250,10 @@ export function CRM() {
                 <i className="fas fa-wand-magic-sparkles mr-1" /> Enriquecer com IA
               </button>
               <div className="flex gap-3">
-                <button
-                  onClick={() => setEditando(null)}
-                  className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
-                >
+                <button onClick={() => setEditando(null)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
                   Cancelar
                 </button>
-                <button
-                  onClick={salvarObservacoes}
-                  className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90"
-                >
+                <button onClick={salvarObservacoes} className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90">
                   <i className="fas fa-save mr-2" /> Salvar
                 </button>
               </div>
@@ -196,6 +261,33 @@ export function CRM() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+function Campo({
+  rotulo,
+  valor,
+  onChange,
+  tipo = 'text',
+  placeholder,
+}: {
+  rotulo: string;
+  valor: string;
+  onChange: (valor: string) => void;
+  tipo?: string;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-500 mb-1">{rotulo}</label>
+      <input
+        type={tipo}
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
+      />
     </div>
   );
 }
