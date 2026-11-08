@@ -6,6 +6,32 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.09] — 2026-11-08
+
+### Corrigido
+
+- **Encerramento silencioso do launcher no MobaXterm (Windows)** — o app morria
+  sozinho por sinais espúrios (perda de foco/minimização) e por EPIPE ao fechar o
+  terminal. Correções no `scripts/cli.mjs`:
+  - **Keep-alive:** `setInterval(() => {}, 1000);` mantém o event loop ativo mesmo
+    sem I/O de console.
+  - **Absorção de sinais no Windows:** `SIGINT`/`SIGHUP` agora são apenas logados
+    (`[LAUNCHER] Sinal absorvido no Windows`) e **não** encerram o launcher;
+    `SIGTERM`/`SIGBREAK` (Ctrl+Break) seguem como paradas legítimas. No
+    Linux/macOS o comportamento gracioso é mantido.
+  - **Guarda da consola (anti-EPIPE):** `guardConsoleStream()` ignora erros `EPIPE`
+    no `'error'` dos streams e espelha toda a saída em
+    `storage/logs/launcher_console.log`; escrita original com exceção retorna
+    silenciosamente. Aplicada a `process.stdout`/`process.stderr` antes de
+    qualquer escrita do launcher.
+  - Isolamento mantido: worker Python com `detached: true` + `windowsHide: true`
+    (`CREATE_NEW_PROCESS_GROUP`).
+- **AGENTS.md:** nova seção *🚨 REGRA INVIOLÁVEL: ARQUITETURA DO LAUNCHER* com as
+  4 proteções obrigatórias.
+- **Gate de regressão:** `backend/tests/test_launcher_protections.py` falha se
+  keep-alive, absorção de sinais, `guardConsoleStream` ou isolamento forem
+  removidos do launcher.
+
 ## [0.1.08] — 2026-11-08
 
 ### Adicionado

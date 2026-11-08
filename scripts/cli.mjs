@@ -23,7 +23,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
@@ -282,6 +282,36 @@ async function procurarInstanciaAtiva(portaInicial, maxTentativas = 10) {
   return null;
 }
 
+/**
+ * Guarda da consola (anti-EPIPE): se o terminal for fechado (MobaXterm, VS
+ * Code), escrever em stdout/stderr gera EPIPE — que o Node trataria como
+ * uncaughtException, matando o launcher. Esta guarda:
+ *  - ignora erros com code EPIPE no evento 'error' do stream;
+ *  - espelha toda a saída em storage/logs/launcher_console.log;
+ *  - se a escrita original falhar, retorna true silenciosamente.
+ * NUNCA REMOVER (regra inviolável do AGENTS.md).
+ */
+function guardConsoleStream(stream, logFile) {
+  stream.on('error', (err) => {
+    if (err && err.code === 'EPIPE') return; // terminal fechado: ignora
+    return; // demais erros de consola nunca devem derrubar o launcher
+  });
+  const escritaOriginal = stream.write.bind(stream);
+  stream.write = (chunk, encoding, callback) => {
+    try {
+      appendFileSync(logFile, typeof chunk === 'string' ? chunk : Buffer.from(chunk));
+    } catch {
+      /* espelho de log é best-effort */
+    }
+    try {
+      return escritaOriginal(chunk, encoding, callback);
+    } catch {
+      return true; // escrita silenciosa sem exceção
+    }
+  };
+  return stream;
+}
+
 // ---------------------------------------------------------------------------
 // Comandos
 // ---------------------------------------------------------------------------
@@ -416,9 +446,6 @@ function cmdStart(args) {
         child.kill('SIGTERM');
       }
     };
-    process.on('SIGINT', () => { stop(); process.exit(0); });
-    process.on('SIGTERM', () => { stop(); process.exit(0); });
-    if (platform() === 'win32') process.on('SIGHUP', () => { stop(); process.exit(0); });
 
     console.log(`→ Subindo servidor local em ${url} ...`);
     const health = await waitForHealth(porta, 120000);
@@ -428,11 +455,39 @@ function cmdStart(args) {
       stop();
       process.exit(1);
     }
+
+    // -------------------------------------------------------------------------
+    // Sinais (regra inviolável do AGENTS.md)
+    // MobaXterm envia SIGINT/SIGHUP espúrios (perda de foco, minimização): no
+    // Windows esses sinais são APENAS ABSORVIDOS (log), sem encerrar o launcher,
+    // para o app não morrer sozinho. SIGTERM e SIGBREAK são paradas legítimas e
+    // sempre encerram. No Linux/macOS, SIGINT/SIGHUP mantêm o stop gracioso.
+    // -------------------------------------------------------------------------
+    const ehWindows = platform() === 'win32';
+    const naoAbsorver = () => { stop(); process.exit(0); };
+    const absorverWindows = (nome) => () => {
+      console.log(`[LAUNCHER] Sinal absorvido no Windows (${nome}) — o LeadMaster continua rodando.`);
+    };
+    process.on('SIGINT', ehWindows ? absorverWindows('SIGINT') : naoAbsorver);
+    process.on('SIGHUP', ehWindows ? absorverWindows('SIGHUP') : naoAbsorver);
+    process.on('SIGTERM', naoAbsorver);
+    if (ehWindows) {
+      // SIGBREAK (Ctrl+Break): parada legítima também no Windows.
+      process.on('SIGBREAK', naoAbsorver);
+    }
+
+    // Keep-alive: mantém o event loop ativo mesmo sem I/O de console (MobaXterm
+    // minimizado / sem stream ativo) — evita o encerramento silencioso.
+    setInterval(() => {}, 1000);
+
     console.log(`✓ LeadMaster no ar em ${url} (dados: ${home})`);
     console.log('');
     console.log(`ℹ Abra ${url} no navegador quando quiser — o LeadMaster nunca abre janelas sozinho.`);
-    console.log('');
-    console.log('Pressione Ctrl+C para encerrar.');
+    console.log(
+      ehWindows
+        ? 'ℹ Para encerrar: Ctrl+Break ou feche a janela (Ctrl+C é absorvido no Windows contra sinais espúrios do MobaXterm).'
+        : 'ℹ Para encerrar: Ctrl+C.',
+    );
   })().catch((err) => {
     console.error('✗ Erro inesperado ao iniciar:', err && err.message ? err.message : err);
     process.exit(1);
@@ -497,6 +552,15 @@ const VERSION = (() => {
 const rawArgs = process.argv.slice(2);
 const args = parseArgs(rawArgs);
 const command = args._[0] || 'start';
+
+// Guarda da consola (anti-EPIPE) aplicada ANTES de qualquer escrita do
+// launcher: espelha stdout/stderr em storage/logs/launcher_console.log e
+// ignora EPIPE (terminal fechado) — regra inviolável do AGENTS.md.
+const homeLauncher = resolveHome(args);
+const LOG_DIR = path.join(homeLauncher, 'storage', 'logs');
+mkdirSync(LOG_DIR, { recursive: true });
+const CONSOLE_LOG = path.join(LOG_DIR, 'launcher_console.log');
+[process.stdout, process.stderr].forEach((stream) => guardConsoleStream(stream, CONSOLE_LOG));
 
 switch (command) {
   case 'install': cmdInstall(args); break;
