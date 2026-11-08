@@ -280,8 +280,11 @@ def import_leads(novos: list, dedup: bool = True) -> dict:
     with LOCK:
         leads = list_leads()
         existentes = {
-            (l.get("telefone") or "").strip(),
-            (l.get("email") or "").strip().lower(),
+            (lead.get("telefone") or "").strip()
+            for lead in leads
+        } | {
+            (lead.get("email") or "").strip().lower()
+            for lead in leads
         }
         importados, duplicados = [], []
         for novo in novos:

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import type { AppConfig, Lead, ResultadoExtracao } from '../lib/types';
 import { Accordion } from '../components/Accordion';
@@ -7,37 +7,44 @@ import { StatusBadge } from '../components/StatusBadge';
 import { useToast } from '../components/Toast';
 import { cn, mascararTelefone } from '../lib/format';
 
-type Aba = 'maps' | 'instagram' | 'cnpj';
+type Aba = 'instagram' | 'cnpj';
 
 const ABAS: { id: Aba; rotulo: string; icone: string }[] = [
-  { id: 'maps', rotulo: 'Google Maps', icone: 'fas fa-map-marked-alt' },
   { id: 'instagram', rotulo: 'Instagram', icone: 'fab fa-instagram' },
   { id: 'cnpj', rotulo: 'CNPJ', icone: 'fas fa-building' },
 ];
 
 export function Extratores() {
   const [params, setParams] = useSearchParams();
-  const aba = (params.get('tab') as Aba) || 'maps';
+  const navigate = useNavigate();
+  const aba = (params.get('tab') as Aba) || 'instagram';
   return (
     <div className="space-y-6">
-      <div className="flex gap-2">
-        {ABAS.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setParams({ tab: item.id })}
-            className={cn(
-              'px-5 py-2.5 text-sm font-medium rounded-lg transition',
-              aba === item.id
-                ? 'bg-[#1e1b4b] text-white shadow-sm'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50',
-            )}
-          >
-            <i className={cn(item.icone, 'mr-2')} />
-            {item.rotulo}
-          </button>
-        ))}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-2">
+          {ABAS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setParams({ tab: item.id })}
+              className={cn(
+                'px-5 py-2.5 text-sm font-medium rounded-lg transition',
+                aba === item.id
+                  ? 'bg-[#1e1b4b] text-white shadow-sm'
+                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50',
+              )}
+            >
+              <i className={cn(item.icone, 'mr-2')} />
+              {item.rotulo}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => navigate('/extrator-maps')}
+          className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+        >
+          <i className="fas fa-map-marked-alt mr-1" /> Extrator Maps → página dedicada
+        </button>
       </div>
-      {aba === 'maps' && <ExtratorMaps />}
       {aba === 'instagram' && <ExtratorInstagram />}
       {aba === 'cnpj' && <ExtratorCnpj />}
     </div>
@@ -144,121 +151,6 @@ function detalhes(lead: Partial<Lead>): string {
 }
 
 // ---------------------------------------------------------------------------
-// Google Maps
-// ---------------------------------------------------------------------------
-
-function ExtratorMaps() {
-  const { toast } = useToast();
-  const [palavra, setPalavra] = useState('');
-  const [localizacao, setLocalizacao] = useState('');
-  const [maxResultados, setMaxResultados] = useState(100);
-  const [resultados, setResultados] = useState<ResultadoExtracao | null>(null);
-  const [carregando, setCarregando] = useState(false);
-  const [importando, setImportando] = useState(false);
-  const [config, setConfig] = useState<AppConfig | null>(null);
-
-  useEffect(() => {
-    api.config.obter().then(setConfig).catch(() => undefined);
-  }, []);
-
-  const extrair = async () => {
-    if (palavra.trim().length < 2 || localizacao.trim().length < 2) {
-      toast('erro', 'Preencha a palavra-chave e a localização (ex.: "dentista", "São Paulo").');
-      return;
-    }
-    setCarregando(true);
-    setResultados(null);
-    try {
-      const r = await api.extrair.googleMaps({ palavra_chave: palavra.trim(), localizacao: localizacao.trim(), max_resultados: maxResultados });
-      setResultados(r);
-      toast('sucesso', `${r.leads.length} leads extraídos — revise e importe.`);
-    } catch (e) {
-      toast('erro', e instanceof Error ? e.message : 'Falha na extração.');
-    } finally {
-      setCarregando(false);
-    }
-  };
-
-  const importar = async (leads: Partial<Lead>[]) => {
-    setImportando(true);
-    try {
-      const r = await api.leads.importar(leads);
-      toast('sucesso', `${r.importados.length} importados, ${r.duplicados.length} duplicados ignorados.`);
-      setResultados(null);
-    } catch (e) {
-      toast('erro', e instanceof Error ? e.message : 'Falha ao importar.');
-    } finally {
-      setImportando(false);
-    }
-  };
-
-  const cliOk = !!config?.extratores.google_maps_cli;
-
-  return (
-    <div className="space-y-5">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">Busque empresas por palavra-chave e localização (dados públicos do Google Maps).</p>
-          <StatusBadge status={cliOk ? 'ativo' : 'inativo'} rotulo={cliOk ? 'Scraper configurado' : 'Scraper não configurado'} />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="md:col-span-2">
-            <label className="block text-xs font-medium text-gray-500 mb-1">Palavra-chave *</label>
-            <input
-              value={palavra}
-              onChange={(e) => setPalavra(e.target.value)}
-              placeholder="Ex.: dentista, barbearia, academia..."
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Localização *</label>
-            <input
-              value={localizacao}
-              onChange={(e) => setLocalizacao(e.target.value)}
-              placeholder="Ex.: São Paulo, SP"
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Máx. resultados</label>
-            <input
-              type="number"
-              min={1}
-              max={500}
-              value={maxResultados}
-              onChange={(e) => setMaxResultados(Number(e.target.value) || 100)}
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
-            />
-          </div>
-        </div>
-        {/* CTA grande (Fitts + von Restorff) */}
-        <button
-          onClick={extrair}
-          disabled={carregando}
-          className="w-full md:w-auto px-8 py-3 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90 transition disabled:opacity-60"
-        >
-          <i className={cn('fas fa-magnifying-glass mr-2', carregando && 'fa-spin')} />
-          {carregando ? 'Extraindo leads...' : 'Extrair Leads'}
-        </button>
-        <Accordion titulo="Como instalar o Google Maps Scraper" icone="fas fa-circle-question">
-          <ol className="text-xs text-gray-500 space-y-1 list-decimal pl-4">
-            <li>
-              Instale o scraper:{' '}
-              <code className="bg-gray-100 px-1 rounded">github.com/gosom/google-maps-scraper</code>
-            </li>
-            <li>
-              Compile (Go) e informe o caminho do binário em <strong>Ferramentas → Extratores</strong>.
-            </li>
-            <li>As flags do comando são ajustáveis no template de argumentos em Ferramentas.</li>
-          </ol>
-        </Accordion>
-      </div>
-      {resultados && <Resultados resultados={resultados} onImportar={importar} importando={importando} />}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Instagram
 // ---------------------------------------------------------------------------

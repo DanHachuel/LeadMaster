@@ -32,7 +32,7 @@ LeadMaster/
 ├── frontend/                            # React + Vite + Tailwind (UI)
 │   ├── src/components/                  # Sidebar, Header, MetricCard, Charts, Kanban...
 │   ├── src/pages/                       # Dashboard, Leads, CRM, Disparos, Extratores,
-│   │                                    # Pipeline, Agentes, Ferramentas...
+│   │                                    #   ExtratorMaps, Agentes, Ferramentas, Webhook, Suporte
 │   └── src/lib/api.ts                   # Cliente HTTP tipado
 ├── backend/                             # FastAPI
 │   ├── main.py                          # Rotas da API + serving da UI (dist)

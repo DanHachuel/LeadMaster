@@ -6,6 +6,36 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.10] — 2026-11-08
+
+### Adicionado
+
+- **Extrator de Leads (Google Maps)** — primeira página dedicada de extração:
+  - Rota `POST /api/extractors/maps` (`keyword`, `location`, `limit`): sem scraper
+    configurado gera **mock de 5–10 leads** (segurança anti-bloqueio de IP);
+    com `gosom/google-maps-scraper` configurado em Ferramentas, executa o CLI
+    real com as flags de isolamento (`creationflags` da 0.1.5). Os leads são
+    salvos em `leads.json` na coluna **"Novos Leads"** e retornados na resposta.
+  - Página `frontend/src/pages/ExtratorMaps.tsx` (rota `/extrator-maps`, link no
+    menu lateral): formulário limpo (palavra-chave, localização, slider de
+    quantidade), **modal/accordion** com opções avançadas escondidas (Lei de
+    Hick), botão **"Iniciar Extração"** em gradiente (von Restorff/Fitts),
+    **barra de progresso animada** durante a extração (Zeigarnik), tabela de
+    resultados (Nome, Telefone, Localização, Avaliação) e botão **"Ir para o
+    CRM"**. A aba Maps duplicada dentro de Extratores foi removida (substituída
+    por um atalho para a página dedicada).
+
+### Corrigido
+
+- **Bug latente em `storage.import_leads`** (NameError na deduplicação) —
+  exposto pelos novos testes e corrigido; importação em massa agora funciona.
+
+### Testes
+
+- 3 novos testes pytest da rota (`backend/tests/test_maps_extractor.py`):
+  mock/persistência, limite respeitado e payload inválido (422).
+  Suíte completa: **21 passed**.
+
 ## [0.1.09] — 2026-11-08
 
 ### Corrigido

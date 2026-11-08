@@ -231,6 +231,53 @@ def enriquecer_com_site(website: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Google Maps — mock para teste inicial (anti-bloqueio de IP)
+# ---------------------------------------------------------------------------
+
+_NOMES_MOCK = [
+    "Bella Massa", "Sabor & Cia", "Cantinho da Esquina", "Estrela do Bairro",
+    "Ponto Certo", "Casa Nova", "Primeira Opção", "Rei do Sabor", "Vila Feliz",
+    "Coracao Paulista",
+]
+
+_PREFIXOS_MOCK = ["Pizzaria", "Restaurante", "Lanches", "Comida", "Marmitaria"]
+
+
+def gerar_mock_maps(keyword: str, location: str, limit: int = 10) -> list:
+    """Gera 5 a 10 leads fictícios do Google Maps para teste inicial.
+
+    Usado quando o scraper real (gosom/google-maps-scraper) não está configurado
+    — evita bloqueios de IP nos primeiros testes. Quando o CLI está configurado,
+    `extrair_google_maps` (com flags de isolamento) é usada no lugar.
+    """
+    quantidade = max(5, min(int(limit or 10), 10))
+    leads = []
+    for i in range(quantidade):
+        primeiro = _NOMES_MOCK[i % len(_NOMES_MOCK)]
+        prefixo = _PREFIXOS_MOCK[i % len(_PREFIXOS_MOCK)]
+        nome = f"{prefixo} {primeiro}"
+        ddd = 11 + (i * 3) % 88
+        telefone = f"({ddd}) 9{1000 + i:04d}-{4000 + i:04d}"
+        slug = primeiro.lower().replace(" ", "").replace("&", "e")
+        leads.append(
+            {
+                "nome": nome,
+                "telefone": telefone,
+                "email": f"contato@{slug}.com.br",
+                "fonte": "Google Maps",
+                "etapa": "leads",
+                "empresa": nome,
+                "endereco": f"Rua das Palmeiras, {100 + i * 7} - Centro",
+                "cidade": location,
+                "score": 45 + (i * 5) % 40,
+                "tags": ["google-maps"],
+                "extras": {"avaliacao": round(4.2 + (i % 8) * 0.1, 1), "qtd_avaliacoes": 30 + i * 9},
+            }
+        )
+    return leads
+
+
+# ---------------------------------------------------------------------------
 # Utilitários de parsing tolerante
 # ---------------------------------------------------------------------------
 

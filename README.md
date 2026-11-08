@@ -55,7 +55,7 @@ para `http://127.0.0.1:8010` (backend de desenvolvimento).
 | **Painel** | Status da conexão, taxa de entrega, taxa de erro, total de leads; gráfico de barras (leads por etapa do CRM) e doughnut (campanhas: enviadas × erros). |
 | **Leads** | CRUD completo, importação em massa a partir dos extratores, barra de progresso de preenchimento, enriquecimento por IA. |
 | **CRM Kanban** | Drag-and-drop (@dnd-kit) nas colunas *Leads → Em contato → Proposta → Fechado*; o agente de IA sugere movimentações e enriquece os cards. |
-| **Extratores** | **Google Maps** (palavra-chave + localização, via `gosom/google-maps-scraper`), **Instagram** (URL do perfil, via `lucasoal/igmapper`) e **CNPJ** (BrasilAPI + busca por CNAE/UF + `D4Vinci/Scrapling`). Toda extração gera pré-visualização antes de importar. |
+| **Extratores** | **Google Maps** (página dedicada `ExtratorMaps`: palavra-chave + localização + quantidade, com mock de 5–10 leads para teste seguro ou scraper real `gosom/google-maps-scraper` quando configurado — leads entram direto na coluna "Novos Leads" do CRM), **Instagram** (URL do perfil, via `lucasoal/igmapper`) e **CNPJ** (BrasilAPI + busca por CNAE/UF + `D4Vinci/Scrapling`). Toda extração gera pré-visualização antes de importar. |
 | **Disparos** | Campanhas de disparo (texto/áudio) com templates configuráveis e execução via `eracle/OpenOutreach`. |
 | **Agentes** | Agente de disparo (prompts/templates) e agente de atendimento (texto via LLM ou voz via `pipecat-ai/pipecat`). |
 | **Ferramentas** | Chaves de API, URLs das integrações locais, testes de conexão — tudo salvo em `config.json` local. |

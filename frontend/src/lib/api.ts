@@ -95,8 +95,11 @@ export const api = {
 
   // Extratores
   extrair: {
-    googleMaps: (dados: { palavra_chave: string; localizacao: string; max_resultados?: number }) =>
-      req<ResultadoExtracao>('/extract/google-maps', corpo(dados)),
+    maps: (dados: { keyword: string; location: string; limit?: number }) =>
+      req<{ origem: string; aviso: string; extraidos: Partial<Lead>[]; importados: Lead[]; duplicados: number }>(
+        '/extractors/maps',
+        corpo(dados),
+      ),
     instagram: (profile_url: string) => req<ResultadoExtracao>('/extract/instagram', corpo({ profile_url })),
     cnpj: (cnpj: string) => req<Partial<Lead>>('/extract/cnpj', corpo({ cnpj })),
     cnpjBusca: (dados: { cnae: string; uf: string; quantidade?: number }) =>

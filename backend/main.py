@@ -107,14 +107,14 @@ class CampaignIn(BaseModel):
     lead_ids: list[str] = []
 
 
-class GoogleMapsIn(BaseModel):
-    palavra_chave: str = Field(min_length=2)
-    localizacao: str = Field(min_length=2)
-    max_resultados: int = 100
-
-
 class InstagramIn(BaseModel):
     profile_url: str = Field(min_length=6)
+
+
+class MapsExtractIn(BaseModel):
+    keyword: str = Field(min_length=2)
+    location: str = Field(min_length=2)
+    limit: int = 10
 
 
 class CnpjIn(BaseModel):
@@ -378,14 +378,46 @@ def remover_campanha(campaign_id: str):
 # Extratores
 # ---------------------------------------------------------------------------
 
-@app.post("/api/extract/google-maps")
-def extrair_google_maps(dados: GoogleMapsIn):
-    try:
-        return extractors.extrair_google_maps(dados.palavra_chave, dados.localizacao, dados.max_resultados)
-    except extractors.ExtratorNaoConfigurado as e:
-        raise HTTPException(400, str(e))
-    except extractors.ExtratorErro as e:
-        raise HTTPException(502, str(e))
+@app.post("/api/extractors/maps", status_code=201)
+def extrair_maps(dados: MapsExtractIn):
+    """Extrator de leads do Google Maps.
+
+    Se o scraper real (gosom/google-maps-scraper) estiver configurado em
+    Ferramentas, usa o CLI com as flags de isolamento de processos; caso
+    contrário, gera dados mockados (5 a 10 leads) para teste inicial, sem
+    risco de bloqueio de IP. Os leads são salvos em leads.json na coluna
+    "Novos Leads" (etapa inicial do Kanban).
+    """
+    conf = storage.get_config()["extratores"]
+    cli = conf.get("google_maps_cli", "")
+    max_resultados = max(1, min(dados.limit, 500))
+
+    origem = "mock"
+    aviso = ""
+    leads: list = []
+
+    if cli and Path(cli).exists():
+        try:
+            resultado = extractors.extrair_google_maps(dados.keyword, dados.location, max_resultados)
+            leads = resultado.get("leads", [])
+            if leads:
+                origem = "cli"
+            else:
+                aviso = "O scraper rodou mas não retornou leads — usando dados mockados."
+        except (extractors.ExtratorNaoConfigurado, extractors.ExtratorErro) as e:
+            aviso = f"Scraper indisponível ({e}); usando dados mockados."
+
+    if not leads:
+        leads = extractors.gerar_mock_maps(dados.keyword, dados.location, dados.limit)
+
+    importados = storage.import_leads(leads)
+    return {
+        "origem": origem,
+        "aviso": aviso,
+        "extraidos": leads,
+        "importados": importados["importados"],
+        "duplicados": len(importados["duplicados"]),
+    }
 
 
 @app.post("/api/extract/instagram")
