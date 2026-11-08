@@ -111,9 +111,9 @@ produza commits.
     e `npx.cmd --yes --prefer-online @danhachuel/leadmaster@<VERSAO>`
   - Instalação normal: `npx --yes @danhachuel/leadmaster@<VERSAO> install` e
     `npx --yes @danhachuel/leadmaster@<VERSAO>`
-  - Nas instruções **permanentes** (README, página NPM, `legal/`), usar sempre a tag
-    `@latest`; na comunicação de release ao usuário, informar também a versão canônica
-    literal confirmada no registry (ex.: `0.1.4`).
+  - O `<VERSAO>` é **sempre** a versão **canônica literal confirmada no registry** (ex.: `0.1.5`)
+    — **nunca** enviar `@latest` ao usuário. `@latest` é permitido apenas nas instruções
+    permanentes (README, página do NPM, `legal/`), onde queremos sempre a versão mais recente.
 - **CHANGELOG obrigatório** — sempre que existir qualquer alteração com push (código,
   docs, configuração, correção, publicação npm), escrever a entrada correspondente no
   `CHANGELOG.md` antes de publicar — nenhuma versão sai sem registo. Ao integrar trabalho

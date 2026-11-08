@@ -6,6 +6,16 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.06] — 2026-11-08
+
+### Corrigido
+
+- **Regra de comandos de instalação (AGENTS.md)** — redação ambígua permitia enviar
+  `@latest` nas mensagens de release. Agora é explícito: os comandos entregues ao
+  usuário usam **sempre a versão canônica confirmada no registry** (ex.: `0.1.6`) —
+  `@latest` é permitido apenas nas instruções permanentes (README, página NPM,
+  `legal/`).
+
 ## [0.1.05] — 2026-11-08
 
 ### Corrigido
