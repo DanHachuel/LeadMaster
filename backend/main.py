@@ -132,6 +132,12 @@ class CnpjSearchIn(BaseModel):
     quantidade: int = 20
 
 
+class CnpjExtractIn(BaseModel):
+    cnae: str = Field(min_length=2)
+    uf: str = Field(min_length=2)
+    limit: int = 10
+
+
 class ChatIn(BaseModel):
     mensagens: list[dict]
 
@@ -412,6 +418,47 @@ def extrair_instagram_endpoint(dados: InstagramExtractIn):
 
     if not leads:
         leads = extractors.gerar_mock_instagram(dados.profile_url, dados.limit)
+
+    importados = storage.import_leads(leads)
+    return {
+        "origem": origem,
+        "aviso": aviso,
+        "extraidos": leads,
+        "importados": importados["importados"],
+        "duplicados": len(importados["duplicados"]),
+    }
+
+
+@app.post("/api/extractors/cnpj", status_code=201)
+def extrair_cnpj_endpoint(dados: CnpjExtractIn):
+    """Extrator de leads B2B (empresas) por CNAE + UF.
+
+    Enquanto o provedor de busca em Ferramentas → Extratores for o placeholder
+    padrão, gera mock de 5–10 empresas fictícias (nome fantasia, CNPJ,
+    telefone/e-mail) — estabilidade e anti-bloqueio nesta fase. Com uma URL de
+    provedor real configurada, consulta o provedor e degrada para mock em
+    falha ou rate-limit. Leads salvos em leads.json na coluna "Novos Leads".
+    """
+    conf = storage.get_config()["extratores"]
+    provedor = (conf.get("cnpj_provedor_busca") or "").strip()
+
+    origem = "mock"
+    aviso = ""
+    leads: list = []
+
+    if provedor and provedor != extractors.CNPJ_PROVEDOR_PADRAO:
+        try:
+            resultado = extractors.buscar_cnpj_cnae(dados.cnae, dados.uf, dados.limit)
+            leads = resultado.get("leads", [])
+            if leads:
+                origem = "provedor"
+            else:
+                aviso = "O provedor de busca não retornou leads — usando dados mockados."
+        except extractors.ExtratorErro as e:
+            aviso = f"Provedor de busca indisponível ({e}); usando dados mockados."
+
+    if not leads:
+        leads = extractors.gerar_mock_cnpj(dados.cnae, dados.uf, dados.limit)
 
     importados = storage.import_leads(leads)
     return {

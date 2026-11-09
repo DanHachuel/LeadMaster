@@ -27,7 +27,7 @@ const NAVEGACAO: { secao?: string; itens: ItemNav[] }[] = [
     itens: [
       { para: '/extrator-maps', icone: 'fas fa-map-marked-alt', rotulo: 'Extrator Maps' },
       { para: '/extrator-instagram', icone: 'fab fa-instagram', rotulo: 'Extrator Instagram' },
-      { para: '/extratores?tab=cnpj', icone: 'fas fa-building', rotulo: 'Extrator CNPJ' },
+      { para: '/extrator-cnpj', icone: 'fas fa-building', rotulo: 'Extrator CNPJ' },
     ],
   },
   {

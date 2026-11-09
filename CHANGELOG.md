@@ -37,6 +37,45 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.14] — 2026-11-08
+
+### Adicionado
+
+- **Extrator de Leads (CNPJ) — terceira fonte dedicada, leads B2B:**
+  - Rota `POST /api/extractors/cnpj` (`cnae`, `uf`, `limit`): enquanto o provedor
+    de busca em Ferramentas → Extratores for o placeholder padrão, gera **mock de
+    5–10 empresas fictícias** (nome fantasia, CNPJ formatado, telefone/e-mail,
+    porte e capital social em `extras`) — estabilidade e anti-bloqueio nesta
+    fase. Com URL de provedor real configurada, consulta o provedor
+    (`buscar_cnpj_cnae`, parser tolerante) e **degrada para mock** em falha ou
+    rate-limit, com aviso acionável. Leads salvos em `leads.json` na coluna
+    **"Novos Leads"** e retornados na resposta (`extraidos`, `importados`,
+    `duplicados`, `origem`).
+  - Página `frontend/src/pages/ExtratorCNPJ.tsx` (rota `/extrator-cnpj`, link no
+    menu lateral): campo **CNAE**, **dropdown de UF** (27 estados), slider de
+    quantidade (5–10), botão **"Iniciar Extração"** em gradiente
+    (von Restorff/Fitts), **barra de progresso animada** "Buscando empresas..."
+    (Zeigarnik), tabela de resultados (Nome Fantasia, CNPJ, Cidade/UF,
+    Telefone, Fonte) e botão **"Ir para o CRM"**. Opções avançadas (porte da
+    empresa, capital social mínimo) escondidas em accordion (Lei de Hick) —
+    aplicam-se ao provedor real.
+  - **Consulta avulsa por CNPJ** (BrasilAPI) preservada dentro da nova página:
+    consulta e importa uma empresa específica para "Novos Leads".
+  - `frontend/src/pages/Extratores.tsx` virou hub de atalhos para as três
+    páginas dedicadas (Maps, Instagram, CNPJ) — aba CNPJ removida, mesmo
+    padrão das outras fontes.
+- **Testes:** `backend/tests/test_cnpj_extractor.py` — mock gera e persiste
+  (fonte/etapa/campos), limite respeitado, UF normalizada (minúscula → "MG") e
+  payload inválido (422). Suíte completa: **31 passed**.
+
+### Auditoria
+
+- **0.1.13 (versão anterior):** Extrator Instagram entregue na 0.1.12 por sessão
+  simultânea — auditado contra a especificação (rota `POST /api/extractors/instagram`,
+  mock 5–10, página `/extrator-instagram`, accordion avançado, testes) **sem
+  alterações necessárias**; versão dinâmica na sidebar (`__APP_VERSION__`) e
+  consolidação do `process.on('exit')` do launcher conferidos e verdes.
+
 ## [0.1.13] — 2026-11-08
 
 ### Adicionado

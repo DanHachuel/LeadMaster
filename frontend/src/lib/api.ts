@@ -108,6 +108,11 @@ export const api = {
     cnpj: (cnpj: string) => req<Partial<Lead>>('/extract/cnpj', corpo({ cnpj })),
     cnpjBusca: (dados: { cnae: string; uf: string; quantidade?: number }) =>
       req<ResultadoExtracao>('/extract/cnpj/search', corpo(dados)),
+    cnpjExtract: (dados: { cnae: string; uf: string; limit?: number }) =>
+      req<{ origem: string; aviso: string; extraidos: Partial<Lead>[]; importados: Lead[]; duplicados: number }>(
+        '/extractors/cnpj',
+        corpo(dados),
+      ),
   },
 
   // Configuração

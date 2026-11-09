@@ -13,6 +13,7 @@ import { Disparos } from './pages/Disparos';
 import { Extratores } from './pages/Extratores';
 import { ExtratorMaps } from './pages/ExtratorMaps';
 import { ExtratorInstagram } from './pages/ExtratorInstagram';
+import { ExtratorCNPJ } from './pages/ExtratorCNPJ';
 import { Agentes } from './pages/Agentes';
 import { Ferramentas } from './pages/Ferramentas';
 import { Webhook } from './pages/Webhook';
@@ -26,6 +27,7 @@ const TITULOS: Record<string, string> = {
   '/extratores': 'Extratores de Leads',
   '/extrator-maps': 'Extrator de Leads — Google Maps',
   '/extrator-instagram': 'Extrator de Leads — Instagram',
+  '/extrator-cnpj': 'Extrator de Leads — CNPJ',
   '/disparos': 'Disparos',
   '/crm': 'CRM — Kanban',
   '/webhook': 'Webhook',
@@ -135,6 +137,7 @@ function Layout({
             <Route path="/extratores" element={<Extratores />} />
             <Route path="/extrator-maps" element={<ExtratorMaps />} />
             <Route path="/extrator-instagram" element={<ExtratorInstagram />} />
+            <Route path="/extrator-cnpj" element={<ExtratorCNPJ />} />
             <Route path="/agentes" element={<Agentes />} />
             <Route path="/ferramentas" element={<Ferramentas onConfigSalva={onConfigSalva} />} />
             <Route path="/webhook" element={<Webhook />} />

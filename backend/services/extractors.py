@@ -109,6 +109,12 @@ def extrair_instagram(profile_url: str) -> dict:
 # CNPJ — consulta direta (BrasilAPI) e busca por CNAE/UF (provedor configurável)
 # ---------------------------------------------------------------------------
 
+# Placeholder do provedor de busca: enquanto a URL em Ferramentas → Extratores
+# for este valor, o extrator trabalha em modo MOCK (5–10 empresas fictícias) —
+# estabilidade e anti-bloqueio nesta fase. URL diferente = provedor real.
+CNPJ_PROVEDOR_PADRAO = "https://api.opencnpj.org"
+
+
 def _so_digitos(texto: str) -> str:
     return "".join(c for c in texto or "" if c.isdigit())
 
@@ -160,7 +166,7 @@ def buscar_cnpj_cnae(cnae: str, uf: str, quantidade: int = 20) -> dict:
     {"data": ...} e vários nomes de campos).
     """
     conf = _conf()
-    base = (conf.get("cnpj_provedor_busca") or "https://api.opencnpj.org").rstrip("/")
+    base = (conf.get("cnpj_provedor_busca") or CNPJ_PROVEDOR_PADRAO).rstrip("/")
     params = {"cnae": _so_digitos(cnae), "uf": uf.strip().upper(), "quantidade": str(max(1, min(quantidade, 100)))}
     try:
         r = httpx.get(base, params=params, timeout=60)
@@ -203,6 +209,67 @@ def buscar_cnpj_cnae(cnae: str, uf: str, quantidade: int = 20) -> dict:
         lead["score"] = 45
         leads.append(lead)
     return {"leads": leads, "provedor": base}
+
+
+# ---------------------------------------------------------------------------
+# CNPJ — mock para teste inicial (empresas fictícias por CNAE/UF)
+# ---------------------------------------------------------------------------
+
+_FANTASIAS_MOCK = [
+    "Tecno", "Solar", "Sabores", "Constrular", "Saúde Viva",
+    "Agro Forte", "Moda Urbana", "Log Mais", "Clean House", "InfoSul",
+]
+
+_SUFIXOS_MOCK = ["Ltda", "Serviços", "Comércio", "Indústria", "Tech", "Soluções"]
+
+_PORTES_MOCK = ["ME", "EPP", "Médio", "Grande"]
+
+_CIDADES_MOCK = ["São Paulo", "Campinas", "Santos", "Ribeirão Preto", "Sorocaba", "São José dos Campos"]
+
+
+def gerar_mock_cnpj(cnae: str, uf: str, limit: int = 10) -> list:
+    """Gera 5 a 10 empresas fictícias (leads B2B) por CNAE + UF para teste.
+
+    Usado enquanto o provedor de busca por CNAE não estiver configurado com uma
+    URL real em Ferramentas → Extratores — evita bloqueios e garante
+    estabilidade nesta fase. Com provedor real configurado, `buscar_cnpj_cnae`
+    é usada no lugar (degradação graciosa para mock em falha/rate-limit).
+    """
+    quantidade = max(5, min(int(limit or 10), 10))
+    uf = (uf or "SP").strip().upper()[:2]
+    cnae_limpo = _so_digitos(cnae)
+    cnae_fmt = (cnae or "").strip() or (f"{cnae_limpo[:4]}-{cnae_limpo[4:5]}/{cnae_limpo[5:]}" if cnae_limpo else "6201-5/00")
+    leads = []
+    for i in range(quantidade):
+        fantasia = f"{_FANTASIAS_MOCK[i % len(_FANTASIAS_MOCK)]} {_SUFIXOS_MOCK[i % len(_SUFIXOS_MOCK)]}"
+        raiz = 10_000_000 + i * 1_373
+        ordem = f"{raiz:08d}0001{10 + i:02d}"
+        cnpj = f"{ordem[:2]}.{ordem[2:5]}.{ordem[5:8]}/{ordem[8:12]}-{ordem[12:]}"
+        ddd = 11 + (i * 7) % 88
+        capital = round(50_000 + i * 137_500, -3)
+        leads.append(
+            {
+                "nome": fantasia,
+                "empresa": fantasia,
+                "cnpj": cnpj,
+                "telefone": f"({ddd}) 3{2000 + i:04d}-{3000 + i:04d}",
+                "email": f"contato@{fantasia.split()[0].lower()}{i + 1}.com.br",
+                "endereco": f"Avenida Central, {100 + i * 13} - Centro",
+                "cidade": f"{_CIDADES_MOCK[i % len(_CIDADES_MOCK)]}/{uf}",
+                "fonte": "CNPJ",
+                "etapa": "leads",
+                "score": 45 + (i * 5) % 45,
+                "tags": ["cnpj", "b2b"],
+                "extras": {
+                    "porte": _PORTES_MOCK[i % len(_PORTES_MOCK)],
+                    "capital_social": capital,
+                    "cnae": cnae_fmt,
+                    "municipio": _CIDADES_MOCK[i % len(_CIDADES_MOCK)],
+                    "uf": uf,
+                },
+            }
+        )
+    return leads
 
 
 def enriquecer_com_site(website: str) -> dict:
