@@ -37,7 +37,7 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
-## [0.1.11] — 2026-11-08
+## [0.1.12] — 2026-11-08
 
 ### Adicionado
 
@@ -59,12 +59,23 @@ normaliza para a forma canônica (ex.: `0.1.0`).
 
 ### Corrigido
 
-- **Launcher — terminal preso (5ª regra inviolável):** `process.stdin.resume()`
-  mantém o Node (e a PTY do MobaXterm, e com ela o uvicorn) vivos indefinidamente;
-  `process.on('exit')` mata o worker Python em qualquer caminho de saída; `.unref()`
-  eliminado também dos comentários. Gate de regressão atualizado
+- **Launcher (5ª regra inviolável):** `process.on('exit')` mata o worker Python em
+  qualquer caminho de saída (erros inesperados inclusive); `.unref()` eliminado
+  também dos comentários. Gate de regressão atualizado
   (`test_launcher_protections.py`): falha se `process.stdin.resume()`, o ciclo de
-  vida vinculado ou o isolamento desaparecerem.
+  vida vinculado ou o isolamento desaparecerem do launcher.
+- **Renumeração por colisão:** a `0.1.11` já estava publicada no registry (commit
+  do terminal preso) — esta sessão renumera para o patch seguinte, conforme regra
+  do AGENTS.md.
+
+## [0.1.11] — 2026-11-08
+
+### Corrigido
+
+- **Launcher — terminal preso:** `process.stdin.resume();` imediatamente antes das
+  mensagens finais de sucesso — o processo Node permanece vivo ouvindo a entrada
+  padrão, o prompt do MobaXterm nunca é devolvido e a PTY (e com ela o uvicorn)
+  não é fechada. Publicada via tag `v0.1.11`.
 
 ## [0.1.10] — 2026-11-08
 
