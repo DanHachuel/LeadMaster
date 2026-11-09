@@ -172,7 +172,7 @@ indigo/purple apenas na ação principal.
 
 ## 🚨 REGRA INVIOLÁVEL: ARQUITETURA DO LAUNCHER (anti-travamento no MobaXterm)
 
-O launcher (`scripts/cli.mjs`) NÃO pode ser alterado de forma a remover estas cinco
+O launcher (`scripts/cli.mjs`) NÃO pode ser alterado de forma a remover estas seis
 proteções — elas impedem o encerramento silencioso do LeadMaster no Windows:
 
 1. **Keep-alive:** o launcher DEVE conter `setInterval(() => {}, 1000);` para manter o
@@ -198,10 +198,22 @@ proteções — elas impedem o encerramento silencioso do LeadMaster no Windows:
 5. **Isolamento de processos:** o worker Python DEVE ser iniciado com
    `detached: true` (equivale a `CREATE_NEW_PROCESS_GROUP` no Windows) mantendo
    `windowsHide: true`.
+6. **Kill switch (nunca reutilizar instância):** o launcher NUNCA deve ignorar
+   uma porta ocupada. Se a porta estiver em uso por outra instância do
+   LeadMaster, ele DEVE matar o processo antigo (descoberta do PID via
+   `netstat -ano` no Windows / `lsof -ti:porta` no Linux/macOS, seguida de
+   `taskkill /F /T /PID` ou `kill -9`) para garantir que a versão nova assuma o
+   controle — com espera de 1–2s pela liberação da porta. A mensagem "já está
+   rodando" é **proibida**, pois impede atualizações e deixa a versão antiga
+   travando arquivos (erro `EBUSY` no `npx`). **Higiene continua valendo:** só
+   mata processos **confirmados** como LeadMaster (`/api/health` com o payload
+   próprio + PID dono da porta) — processos de outros projetos nunca são
+   tocados (o launcher avança para a próxima porta livre). O kill switch roda
+   tanto no `install` (libera arquivos antes de instalar) quanto no `start`.
 
 Gate de regressão: `backend/tests/test_launcher_protections.py` falha se qualquer uma
-dessas proteções desaparecer do launcher (inclusive `process.stdin.resume();` ou o uso
-de `.unref()`).
+dessas proteções desaparecer do launcher (inclusive `process.stdin.resume();`, o uso
+de `.unref()` ou a ausência do kill switch).
 
 ## 10. QA antes de commit/push
 

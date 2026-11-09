@@ -37,6 +37,36 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.15] — 2026-11-08
+
+### Corrigido
+
+- **Launcher — kill switch: a versão nova SEMPRE assume o controle** — o
+   bloqueio de porta foi eliminado. Antes, ao detectar a porta ocupada, o
+   `cli.mjs` apenas imprimia "LeadMaster já está rodando" e encerrava: a versão
+   antiga continuava no ar, o usuário não conseguia testar a nova e o `npx`
+   falhava com `EBUSY` (arquivos travados no Windows). Agora:
+   - **`encerrarInstanciaAnterior()`** roda no início do `install` (libera os
+     arquivos antes de instalar — fim do `EBUSY`) e do `start`;
+   - descoberta do PID dono da porta via `netstat -ano` (Windows) /
+     `lsof -ti:porta` (Linux/macOS, com fallback `ps`), seguida de
+     `taskkill /F /T /PID` ou `kill -9`;
+   - espera de até 5s pela liberação da porta antes de subir o novo servidor;
+   - **higiene preservada:** só mata processos **confirmados** como LeadMaster
+     (`/api/health` com payload próprio + PID dono da porta). Portas ocupadas
+     por outros projetos são respeitadas — o launcher avança para a próxima
+     porta livre, como sempre;
+   - ciclo de vida vinculado mantido: com o Python antigo morto, o Node antigo
+     encerra sozinho (`child.on('exit')`/`close`).
+- **AGENTS.md:** 6ª regra inviolável do launcher — *Kill switch*: nunca ignorar
+   porta ocupada por instância do LeadMaster; mensagem de reuso **proibida**.
+- **Gate de regressão:** `test_launcher_protections.py` falha se o kill switch
+   desaparecer (`encerrarInstanciaAnterior`/`taskkill`/`netstat`/`lsof`) ou se a
+   mensagem proibida voltar. Suíte completa: **32 passed**.
+- **Testado ao vivo:** instância anterior na mesma porta detectada, encerrada
+   (PID confirmado) e nova instância assumida com PID novo; node antigo caiu
+   pelo ciclo de vida; instância de outros projetos preservada.
+
 ## [0.1.14] — 2026-11-08
 
 ### Adicionado

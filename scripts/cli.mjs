@@ -22,7 +22,7 @@
  *   LEADMASTER_PORT  Porta inicial da UI/API (mesmo efeito de --port).
  */
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import net from 'node:net';
@@ -267,23 +267,20 @@ function portaLivre(port) {
 
 async function resolverPortaUI(portaInicial) {
   /**
-   * Varre portas a partir de portaInicial (padrão 5055):
-   *  - se encontrar uma instância saudável do LeadMaster, devolve {jaRodando: true};
-   *  - senão devolve a primeira porta livre {jaRodando: false, porta};
-   *  - se nenhuma porta livre no intervalo, devolve {porta: null}.
+   * Devolve a primeira porta livre a partir de portaInicial (padrão 5055).
+   * Instâncias anteriores do LeadMaster já foram encerradas pelo kill switch
+   * (`encerrarInstanciaAnterior`) antes desta chamada; se uma porta seguir
+   * ocupada, é de outro projeto — o launcher avança (5056, 5057, ...).
+   * Se nenhuma porta livre no intervalo, devolve {porta: null}.
    */
   for (let i = 0; i < UI_PORT_MAX_TENTATIVAS; i++) {
     const porta = portaInicial + i;
-    const saude = await httpGetJson(`http://127.0.0.1:${porta}/api/health`, 800);
-    if (saude.ok && saude.body && (saude.body.versao || saude.body.storage)) {
-      return { jaRodando: true, porta };
-    }
     if (await portaLivre(porta)) {
-      return { jaRodando: false, porta };
+      return { porta };
     }
     console.log(`ℹ Porta ${porta} ocupada — tentando ${porta + 1}...`);
   }
-  return { jaRodando: false, porta: null };
+  return { porta: null };
 }
 
 async function procurarInstanciaAtiva(portaInicial, maxTentativas = 10) {
@@ -295,6 +292,114 @@ async function procurarInstanciaAtiva(portaInicial, maxTentativas = 10) {
     }
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Kill switch (regra inviolável do AGENTS.md)
+//
+// O launcher NUNCA deve ignorar uma porta ocupada por outra instância do
+// LeadMaster: avisar que já existe instância no ar é PROIBIDO — isso impede
+// atualizações (a versão antiga continua rodando, travando arquivos e
+// causando EBUSY no npx). Antes de subir a nova versão, encerramos qualquer
+// instância anterior confirmada.
+//
+// Segurança (higiene de processos do AGENTS.md): só mata processos
+// CONFIRMADOS como LeadMaster — /api/health respondendo com o payload próprio
+// (versao/home/storage) e o PID dono da porta. Processos de outros projetos
+// NUNCA são tocados: nesse caso o launcher apenas avança para a próxima porta
+// livre, como sempre.
+// ---------------------------------------------------------------------------
+
+function saudeEhLeadmaster(body) {
+  return Boolean(body && (body.versao || body.storage));
+}
+
+function pidsOuvindoPortaWindows(porta) {
+  try {
+    const out = execSync('netstat -ano', { windowsHide: true, encoding: 'utf8', timeout: 8000 });
+    const pids = new Set();
+    for (const linha of out.split(/\r?\n/)) {
+      if (!linha.includes('LISTENING')) continue;
+      const colunas = linha.trim().split(/\s+/);
+      if (colunas.length < 5) continue;
+      if (!colunas[1].endsWith(`:${porta}`)) continue;
+      const pid = Number(colunas[colunas.length - 1]);
+      if (Number.isInteger(pid) && pid > 0) pids.add(pid);
+    }
+    return [...pids];
+  } catch {
+    return [];
+  }
+}
+
+function pidsOuvindoPortaUnix(porta) {
+  try {
+    const out = execSync(`lsof -ti:${porta} -sTCP:LISTEN`, { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] });
+    const pids = out.split(/\s+/).map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0);
+    return [...new Set(pids)];
+  } catch {
+    // Sem lsof: fallback amplo — processos do LeadMaster na lista de processos.
+    try {
+      const out = execSync('ps -eo pid=,args=', { encoding: 'utf8', timeout: 8000 });
+      const pids = new Set();
+      for (const linha of out.split('\n')) {
+        const m = linha.trim().match(/^(\d+)\s+(.*)$/);
+        if (!m) continue;
+        const pid = Number(m[1]);
+        const args = m[2];
+        const ehLeadmaster = args.includes('leadmaster') && (args.includes('cli.mjs') || args.includes('uvicorn main:app'));
+        if (pid > 0 && pid !== process.pid && ehLeadmaster) pids.add(pid);
+      }
+      return [...pids];
+    } catch {
+      return [];
+    }
+  }
+}
+
+function matarArvoreProcesso(pid) {
+  try {
+    if (platform() === 'win32') {
+      const r = spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+      return r.status === 0;
+    }
+    process.kill(pid, 'SIGKILL');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Kill switch: encerra toda instância anterior do LeadMaster (varre as portas
+ * candidatas) antes de subir a nova versão. Portas ocupadas por outros
+ * projetos são deixadas em paz (o resolvedor avançará para a próxima porta).
+ */
+async function encerrarInstanciaAnterior(portaInicial) {
+  let encerrouAlguma = false;
+  for (let i = 0; i < UI_PORT_MAX_TENTATIVAS; i++) {
+    const porta = portaInicial + i;
+    const saude = await httpGetJson(`http://127.0.0.1:${porta}/api/health`, 600);
+    if (!saude.ok || !saudeEhLeadmaster(saude.body)) continue; // não é LeadMaster — respeitar
+    const pids = platform() === 'win32' ? pidsOuvindoPortaWindows(porta) : pidsOuvindoPortaUnix(porta);
+    if (pids.length === 0) continue;
+    console.log(`ℹ Instância anterior do LeadMaster detectada na porta ${porta} — encerrando (PID ${pids.join(', ')})...`);
+    for (const pid of pids) {
+      if (!matarArvoreProcesso(pid)) {
+        console.warn(`⚠ Não foi possível encerrar o PID ${pid} (permissão?). A nova instância usará outra porta.`);
+      }
+    }
+    encerrouAlguma = true;
+    // Aguarda o sistema operacional liberar a porta (até ~5s).
+    for (let t = 0; t < 10; t++) {
+      await sleep(500);
+      const ainda = await httpGetJson(`http://127.0.0.1:${porta}/api/health`, 600);
+      if (!ainda.ok) break;
+    }
+  }
+  if (encerrouAlguma) {
+    console.log('✓ Instância anterior encerrada — a versão nova assume o controle.');
+  }
 }
 
 /**
@@ -331,10 +436,17 @@ function guardConsoleStream(stream, logFile) {
 // Comandos
 // ---------------------------------------------------------------------------
 
-function cmdInstall(args) {
+async function cmdInstall(args) {
   const home = resolveHome(args);
+  const portaInicial = Number.isFinite(args.port) && args.port > 0 ? args.port : UI_PORT;
   console.log(`LeadMaster v${VERSION} — instalação local`);
   console.log('');
+
+  // Kill switch (regra inviolável do AGENTS.md): encerra instâncias anteriores
+  // ANTES de instalar — libera os arquivos travados no Windows (erro EBUSY do
+  // npx ao atualizar por cima de uma instância rodando).
+  await encerrarInstanciaAnterior(portaInicial);
+
   ensureHome(home);
   console.log(`✓ Pasta de dados pronta: ${home}`);
   console.log(`  (leads, campanhas e configuração ficam em "${path.join(home, 'storage')}")`);
@@ -377,23 +489,19 @@ function cmdStart(args) {
   console.log(`✓ Pasta de dados: ${home}`);
 
   (async () => {
-    // Resolve a porta: reusa instância ativa ou pega a primeira livre (5055 → 5056 → ...).
-    const { jaRodando, porta } = await resolverPortaUI(portaInicial);
+    // Kill switch (regra inviolável do AGENTS.md): encerra qualquer instância
+    // anterior do LeadMaster (Node + Python) antes de subir a versão nova —
+    // nunca deixar a versão antiga no ar nem exibir aviso de reuso.
+    await encerrarInstanciaAnterior(portaInicial);
+
+    // Porta: primeira livre a partir de 5055 (→ 5056 → 5057 → ...).
+    const { porta } = await resolverPortaUI(portaInicial);
     if (porta === null) {
       console.error(`✗ Nenhuma porta livre entre ${portaInicial} e ${portaInicial + UI_PORT_MAX_TENTATIVAS - 1}.`);
       console.error('  Libere uma porta ou inicie com --port=<numero>.');
       process.exit(1);
     }
     const url = `http://127.0.0.1:${porta}`;
-    if (jaRodando) {
-      console.log(`ℹ LeadMaster já está rodando em ${url} — abra o endereço no navegador.`);
-      // Saída INFORMATIVA (antes de qualquer inicialização própria): não há
-      // servidor filho para supervisionar nem terminal para prender — o
-      // launcher não deve chamar process.exit(0) no caminho de SUCESSO da
-      // inicialização (regra inviolável do AGENTS.md).
-      process.exit(0);
-      return;
-    }
     if (porta !== portaInicial) {
       console.log(`ℹ Porta ${portaInicial} ocupada — usando a porta ${porta}.`);
     }
@@ -614,7 +722,14 @@ const CONSOLE_LOG = path.join(LOG_DIR, 'launcher_console.log');
 [process.stdout, process.stderr].forEach((stream) => guardConsoleStream(stream, CONSOLE_LOG));
 
 switch (command) {
-  case 'install': cmdInstall(args); break;
+  case 'install':
+    // cmdInstall é async (kill switch): a promise mantém o evento vivo até o
+    // fim; rejeições são logadas pelos handlers globais e encerram com código 1.
+    cmdInstall(args).catch((err) => {
+      console.error('✗ Erro inesperado na instalação:', err && err.message ? err.message : err);
+      process.exit(1);
+    });
+    break;
   case 'start': cmdStart(args); break;
   case 'doctor': cmdDoctor(args); break;
   case 'version': console.log(VERSION); break;

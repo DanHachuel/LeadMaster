@@ -6,9 +6,11 @@ Windows (MobaXterm) for removida:
 1. Keep-alive com setInterval (event loop ativo sem I/O de console);
 2. Terminal preso: `process.stdin.resume();` (PTY do MobaXterm nunca fecha);
    sem `process.exit(0)` no caminho de sucesso e sem `.unref()` no worker;
-3. Absorção de SIGINT/SIGHUP no Windows (apenas log, sem encerrar);
-4. Função guardConsoleStream (anti-EPIPE com espelho em arquivo de log);
-5. Isolamento do worker Python (detached: true / CREATE_NEW_PROCESS_GROUP).
+3. Kill switch: instância anterior do LeadMaster encerrada antes de subir a
+   nova versão (taskkill/lsof pelo PID da porta) — nunca reuso de instância;
+4. Absorção de SIGINT/SIGHUP no Windows (apenas log, sem encerrar);
+5. Função guardConsoleStream (anti-EPIPE com espelho em arquivo de log);
+6. Isolamento do worker Python (detached: true / CREATE_NEW_PROCESS_GROUP).
 """
 
 from pathlib import Path
@@ -30,6 +32,17 @@ class TestLauncherProtections:
 
     def test_worker_nunca_unref(self):
         assert ".unref()" not in _conteudo()
+
+    def test_kill_switch_mata_instancia_anterior(self):
+        # Regra inviolável: nunca ignorar uma porta ocupada por outra instância
+        # do LeadMaster — matar o processo antigo antes de subir o novo. Sem
+        # isso a versão antiga trava arquivos (EBUSY no npx) e a nova não sobe.
+        c = _conteudo()
+        assert "encerrarInstanciaAnterior" in c
+        assert "taskkill" in c  # Windows: mata a árvore do PID da porta
+        assert "netstat" in c or "lsof" in c  # descoberta do PID pela porta
+        # Avisar que já existe instância no ar é proibido (impede atualizações).
+        assert "já está rodando" not in c
 
     def test_ciclo_de_vida_vinculado(self):
         c = _conteudo()
