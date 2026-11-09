@@ -13,7 +13,7 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -94,6 +94,8 @@ class LeadIn(BaseModel):
     observacoes: str = ""
     score: int | None = None
     tags: list[str] = []
+    extras: dict = {}
+    extras: dict | None = None
 
 
 class LeadsImportIn(BaseModel):
@@ -342,6 +344,53 @@ def crm_mover_lead(lead_id: str, dados: dict):
         raise HTTPException(404, "Lead não encontrado.")
     agents.disparar_webhook("lead.etapa", {"lead_id": lead_id, "etapa": etapa, "via": "kanban"})
     return atualizado
+
+
+@app.get("/api/crm/leads/export")
+def crm_exportar_leads_csv():
+    """Exporta todos os leads em CSV (UTF-8 com BOM, amigável ao Excel)."""
+    import csv
+    import io
+
+    leads = storage.list_leads()
+
+    def _valor_celula(valor) -> str:
+        if valor is None:
+            return ""
+        if isinstance(valor, (list, tuple)):
+            return "; ".join(str(v) for v in valor)
+        return str(valor)
+
+    # Colunas fixas + união das chaves de `extras` (achatadas com prefixo).
+    colunas = [
+        "id", "nome", "telefone", "email", "fonte", "etapa", "empresa",
+        "cnpj", "endereco", "cidade", "observacoes", "score", "tags",
+        "criado_em", "atualizado_em",
+    ]
+    extras_keys: list[str] = []
+    for lead in leads:
+        for chave in (lead.get("extras") or {}):
+            coluna = f"extras_{chave}"
+            if coluna not in extras_keys:
+                extras_keys.append(coluna)
+    colunas.extend(sorted(extras_keys))
+
+    buffer = io.StringIO()
+    escritor = csv.writer(buffer, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+    escritor.writerow(colunas)
+    for lead in leads:
+        linha = [_valor_celula(lead.get(coluna)) for coluna in colunas[: len(colunas) - len(extras_keys)]]
+        extras = lead.get("extras") or {}
+        for coluna in sorted(extras_keys):
+            linha.append(_valor_celula(extras.get(coluna[len("extras_"):])))
+        escritor.writerow(linha)
+
+    conteudo = "\ufeff" + buffer.getvalue()  # BOM: Excel em pt-BR lê os acentos
+    return Response(
+        content=conteudo.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="leads_leadmaster.csv"'},
+    )
 
 
 @app.put("/api/crm/leads/{lead_id}")

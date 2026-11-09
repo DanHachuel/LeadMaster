@@ -37,6 +37,30 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.26] — 2026-11-09
+
+### Adicionado
+
+- **Busca no CRM e exportação CSV:**
+  - `GET /api/crm/leads/export`: gera CSV de todos os leads com **BOM UTF-8**
+    (`\ufeff`, para o Excel em português não quebrar acentos), delimiter `;`,
+    `Content-Type: text/csv; charset=utf-8` e
+    `Content-Disposition: attachment; filename="leads_leadmaster.csv"`. Campos
+    de `extras` são **achatados** como colunas `extras_<chave>` (união das
+    chaves existentes) e listas (tags) viram células separadas por `; `.
+  - Frontend: **barra de busca larga** no topo do CRM com filtragem local
+    instantânea por **Nome, Telefone ou Email** + botão de limpar; **botão
+    "Exportar CSV"** em estilo **neutro** (outline — não compete com o
+    "Adicionar Lead" em gradiente, von Restorff) que baixa o arquivo via blob;
+    busca sem resultados mostra aviso amigável *"Nenhum lead encontrado para
+    '...'"* (Zeigarnik).
+- **Corrigido (pego pelos novos testes):** o modelo `LeadIn` descartava o campo
+  `extras` — leads criados manualmente perdiam site/avaliação. Agora o POST de
+  leads preserva `extras`.
+- **3 novos testes pytest** (`backend/tests/test_leads_export.py`): MIME +
+  disposition + BOM + colunas, achatamento de `extras` e exportação de base
+  vazia (só cabeçalho).
+
 ## [0.1.25] — 2026-11-09
 
 ### Adicionado

@@ -640,6 +640,19 @@ function cmdStart(args) {
       }
     });
 
+    // -------------------------------------------------------------------------
+    // Keep-alive INFALÍVEL — Dummy Server (regra inviolável do AGENTS.md)
+    //
+    // Um socket TCP aberto no sistema operacional (porta efêmera em 127.0.0.1)
+    // segura o event loop do Node INDEPENDENTE do terminal: mesmo que o
+    // MobaXterm feche o stdin (EOF), que o wrapper do npx feche os streams ou
+    // que timers sejam perdidos, o handle do servidor impede o processo de
+    // encerrar sozinho. Enquanto `keepAliveServer` existir, o prompt NUNCA é
+    // devolvido e o uvicorn nunca fica órfão. NUNCA REMOVER.
+    // -------------------------------------------------------------------------
+    const keepAliveServer = http.createServer((req, res) => res.end('ok'));
+    keepAliveServer.listen(0, '127.0.0.1');
+
     const stop = () => {
       console.log('\nEncerrando LeadMaster...');
       if (platform() === 'win32' && child.pid) {

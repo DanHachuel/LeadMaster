@@ -78,6 +78,7 @@ export const api = {
     criarLead: (lead: Partial<Lead>) => req<Lead>('/crm/leads', corpo(lead)),
     editarLead: (id: string, dados: Partial<Lead>) =>
       req<Lead>(`/crm/leads/${id}`, { method: 'PUT', body: JSON.stringify(dados) }),
+    exportarCsvUrl: () => '/api/crm/leads/export',
     moverLead: (id: string, etapa: string) =>
       req<Lead>(`/crm/leads/${id}/etapa`, { method: 'PUT', body: JSON.stringify({ etapa }) }),
     sugestoes: () => req<{ sugestoes: SugestaoCrm[] }>('/crm/sugestoes'),

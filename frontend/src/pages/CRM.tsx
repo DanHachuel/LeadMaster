@@ -24,6 +24,8 @@ export function CRM() {
   const [telefoneEdit, setTelefoneEdit] = useState('');
   const [emailEdit, setEmailEdit] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [busca, setBusca] = useState('');
+  const [exportando, setExportando] = useState(false);
 
   const carregar = useCallback(async () => {
     setLeads(await api.crm.leadsListar());
@@ -104,8 +106,7 @@ export function CRM() {
     }
   };
 
-  const salvarDetalhes = async () => {
-    if (!editando) return;
+  const salvarDetalhes = async () => {    if (!editando) return;
     if (!nomeEdit.trim()) {
       toast('erro', 'O nome do lead não pode ficar vazio.');
       return;
@@ -129,6 +130,38 @@ export function CRM() {
       toast('erro', e instanceof Error ? e.message : 'Falha ao salvar alterações.');
     } finally {
       setSalvando(false);
+    }
+  };
+
+  // Busca local instantânea (Nome, Telefone ou Email).
+  const leadsFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return leads;
+    return leads.filter(
+      (l) =>
+        l.nome.toLowerCase().includes(termo) ||
+        (l.telefone || '').includes(termo) ||
+        (l.email || '').toLowerCase().includes(termo),
+    );
+  }, [leads, busca]);
+
+  const exportarCsv = async () => {
+    setExportando(true);
+    try {
+      const resp = await fetch(api.crm.exportarCsvUrl());
+      if (!resp.ok) throw new Error(`Erro HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'leads_leadmaster.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast('sucesso', 'CSV exportado com sucesso.');
+    } catch (e) {
+      toast('erro', e instanceof Error ? e.message : 'Falha ao exportar CSV.');
+    } finally {
+      setExportando(false);
     }
   };
 
@@ -159,6 +192,15 @@ export function CRM() {
             <i className={cn('fas fa-wand-magic-sparkles mr-2', carregandoSugestoes && 'fa-spin')} />
             Sugestões da IA
           </button>
+          {/* Exportação em estilo neutro (von Restorff: não compete com o primário) */}
+          <button
+            onClick={exportarCsv}
+            disabled={exportando}
+            className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-60 shadow-sm"
+          >
+            <i className={cn('fas fa-file-csv mr-2', exportando && 'fa-spin')} />
+            {exportando ? 'Exportando...' : 'Exportar CSV'}
+          </button>
           {/* Botão primário (Lei de Fitts + von Restorff) */}
           <button
             onClick={() => setModalAberto(true)}
@@ -169,7 +211,35 @@ export function CRM() {
         </div>
       </div>
 
-      <KanbanBoard leads={leads} onMover={mover} onAbrirLead={(lead) => { setEditando(lead); setObservacoes(lead.observacoes || ''); }} />
+      {/* Barra de busca larga (Lei de Fitts) */}
+      <div className="relative">
+        <i className="fas fa-search absolute left-3 top-3 text-gray-400 text-sm" />
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar leads por nome, telefone ou e-mail..."
+          className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-400 outline-none"
+        />
+        {busca && (
+          <button
+            onClick={() => setBusca('')}
+            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+            aria-label="Limpar busca"
+          >
+            <i className="fas fa-times" />
+          </button>
+        )}
+      </div>
+
+      {/* Zeigarnik: busca sem resultados mostra mensagem amigável */}
+      {busca.trim() && leadsFiltrados.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800">
+          <i className="fas fa-magnifying-glass mr-2" />
+          Nenhum lead encontrado para "<strong>{busca.trim()}</strong>". Tente outro nome, telefone ou e-mail.
+        </div>
+      )}
+
+      <KanbanBoard leads={leadsFiltrados} onMover={mover} onAbrirLead={(lead) => { setEditando(lead); setObservacoes(lead.observacoes || ''); }} />
 
       {/* Painel de sugestões do agente de CRM */}
       <Modal aberto={sugestoes !== null} onFechar={() => setSugestoes(null)} titulo="Sugestões de movimentação (Agente de CRM)" icone="fas fa-robot" largura="lg">
