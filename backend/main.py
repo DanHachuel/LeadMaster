@@ -344,6 +344,24 @@ def crm_mover_lead(lead_id: str, dados: dict):
     return atualizado
 
 
+@app.put("/api/crm/leads/{lead_id}")
+def crm_editar_lead(lead_id: str, dados: dict):
+    """Edita os dados principais do lead (modal de detalhes do CRM).
+
+    Payload aceita qualquer subconjunto de {nome, telefone, email, ...}; o nome,
+    quando presente, não pode ficar vazio (prevenção de erros).
+    """
+    if "nome" in dados and not str(dados.get("nome") or "").strip():
+        raise HTTPException(400, "O nome do lead não pode ficar vazio.")
+    patch = {k: v for k, v in dados.items() if k in ("nome", "telefone", "email")}
+    if not patch:
+        raise HTTPException(400, "Nenhum campo editável informado (nome, telefone, email).")
+    atualizado = storage.update_lead(lead_id, patch)
+    if not atualizado:
+        raise HTTPException(404, "Lead não encontrado.")
+    return atualizado
+
+
 # ---------------------------------------------------------------------------
 # Campanhas / Disparos
 # ---------------------------------------------------------------------------

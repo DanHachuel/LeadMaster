@@ -11,7 +11,9 @@ interface Props {
 
 /**
  * Card do lead (Lei de Fitts: o card inteiro é a alça de arraste — área de
- * acerto máxima). Efeito Zeigarnik: enquanto arrastado, fica com opacity 0.5.
+ * acerto máxima). Clique simples abre os detalhes; o clique é suprimido
+ * logo após um drag (flag global anti-ruptura do drag-and-drop). Efeito
+ * Zeigarnik: enquanto arrastado, fica com opacity 0.5.
  */
 export function KanbanCard({ lead, onAbrir, emOverlay = false }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: lead.id });
@@ -30,8 +32,11 @@ export function KanbanCard({ lead, onAbrir, emOverlay = false }: Props) {
         'bg-white rounded-lg shadow-sm border border-gray-100 p-3 cursor-grab active:cursor-grabbing select-none touch-none',
         emOverlay && 'shadow-xl rotate-2 cursor-grabbing',
       )}
-      onDoubleClick={() => onAbrir?.(lead)}
-      title="Arraste para mudar de coluna · duplo clique para editar"
+      onClick={() => {
+        if (globalThis.__leadmasterArrastando) return; // clique pós-drag: ignora
+        onAbrir?.(lead);
+      }}
+      title="Arraste para mudar de coluna · clique para ver detalhes"
     >
       <p className="text-sm font-semibold text-gray-800 truncate">{lead.nome}</p>
       <p className="text-xs text-gray-500 mt-0.5">{mascararTelefone(lead.telefone)}</p>

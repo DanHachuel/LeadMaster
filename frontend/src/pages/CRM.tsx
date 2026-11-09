@@ -7,7 +7,7 @@ import { Modal } from '../components/Modal';
 import { Accordion } from '../components/Accordion';
 import { StatusBadge } from '../components/StatusBadge';
 import { useToast } from '../components/Toast';
-import { cn, dataHora, mascararTelefone } from '../lib/format';
+import { cn, dataHora } from '../lib/format';
 
 const VAZIO: Partial<Lead> = { nome: '', telefone: '', email: '', fonte: 'Manual', etapa: 'leads' };
 
@@ -20,6 +20,10 @@ export function CRM() {
   const [editando, setEditando] = useState<Lead | null>(null);
   const [novo, setNovo] = useState<Partial<Lead>>({ ...VAZIO });
   const [observacoes, setObservacoes] = useState('');
+  const [nomeEdit, setNomeEdit] = useState('');
+  const [telefoneEdit, setTelefoneEdit] = useState('');
+  const [emailEdit, setEmailEdit] = useState('');
+  const [salvando, setSalvando] = useState(false);
 
   const carregar = useCallback(async () => {
     setLeads(await api.crm.leadsListar());
@@ -28,6 +32,15 @@ export function CRM() {
   useEffect(() => {
     carregar().catch((e) => toast('erro', e.message));
   }, [carregar, toast]);
+
+  // Pré-preenche o modal com os dados atuais do lead selecionado.
+  useEffect(() => {
+    if (!editando) return;
+    setObservacoes(editando.observacoes || '');
+    setNomeEdit(editando.nome || '');
+    setTelefoneEdit(editando.telefone || '');
+    setEmailEdit(editando.email || '');
+  }, [editando]);
 
   const mover = async (leadId: string, para: Etapa) => {
     const anteriores = leads;
@@ -91,15 +104,31 @@ export function CRM() {
     }
   };
 
-  const salvarObservacoes = async () => {
+  const salvarDetalhes = async () => {
     if (!editando) return;
+    if (!nomeEdit.trim()) {
+      toast('erro', 'O nome do lead não pode ficar vazio.');
+      return;
+    }
+    setSalvando(true);
     try {
-      await api.leads.atualizar(editando.id, { observacoes });
+      const atualizado = await api.crm.editarLead(editando.id, {
+        nome: nomeEdit.trim(),
+        telefone: telefoneEdit.trim(),
+        email: emailEdit.trim(),
+      });
+      // Observações seguem pela rota genérica de leads (PATCH).
+      if (observacoes !== (editando.observacoes || '')) {
+        await api.leads.atualizar(editando.id, { observacoes });
+      }
+      setLeads((atuais) => atuais.map((l) => (l.id === editando.id ? { ...l, ...atualizado, observacoes } : l)));
       setEditando(null);
+      toast('sucesso', 'Alterações salvas.');
       await carregar();
-      toast('sucesso', 'Observações salvas.');
     } catch (e) {
-      toast('erro', e instanceof Error ? e.message : 'Falha ao salvar.');
+      toast('erro', e instanceof Error ? e.message : 'Falha ao salvar alterações.');
+    } finally {
+      setSalvando(false);
     }
   };
 
@@ -219,50 +248,127 @@ export function CRM() {
         </div>
       </Modal>
 
-      {/* Modal: detalhes do lead (duplo clique no card) */}
-      <Modal aberto={!!editando} onFechar={() => setEditando(null)} titulo="Lead" icone="fas fa-address-card">
+      {/* Modal: detalhes do lead (clique no card) */}
+      <Modal aberto={!!editando} onFechar={() => setEditando(null)} titulo="Detalhes do Lead" icone="fas fa-address-card">
         {editando && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-semibold text-gray-800">{editando.nome}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {mascararTelefone(editando.telefone)} · {editando.fonte} · criado em {dataHora(editando.criado_em)}
+                  {editando.fonte} · criado em {dataHora(editando.criado_em)}
                 </p>
               </div>
               <StatusBadge status={editando.etapa} />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Observações</label>
-              <textarea
-                value={observacoes}
-                onChange={(e) => setObservacoes(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
-                placeholder="Ex.: ligou pedindo proposta, retorna na sexta..."
-              />
+
+            {/* Dados completos (inclui extras: site, endereço, avaliação...) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <Dado rotulo="Empresa" valor={editando.empresa} />
+              <Dado rotulo="CNPJ" valor={editando.cnpj} />
+              <Dado rotulo="Endereço" valor={editando.endereco} />
+              <Dado rotulo="Cidade" valor={editando.cidade} />
+              <Dado rotulo="Site" valor={dadoExtra(editando, 'site', 'website', 'web_site')} />
+              <Dado rotulo="Avaliação" valor={dadoExtra(editando, 'avaliacao', 'rating', 'nota')} />
+              <Dado rotulo="Seguidores" valor={dadoExtra(editando, 'seguidores', 'followers')} />
+              <Dado rotulo="Username" valor={dadoExtra(editando, 'username', 'handle')} />
+              <Dado rotulo="Bio" valor={dadoExtra(editando, 'bio', 'biography')} />
+              <div className="md:col-span-2 flex flex-wrap gap-1.5">
+                {(editando.tags || []).map((tag) => (
+                  <span key={tag} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                    {tag}
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => enriquecer(editando)}
-                className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
-              >
+
+            {/* Edição dos campos principais */}
+            <div className="space-y-3 border-t border-gray-100 pt-4">
+              <p className="text-xs font-medium text-gray-500">Editar dados</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Nome *</label>
+                  <input
+                    value={nomeEdit}
+                    onChange={(e) => setNomeEdit(e.target.value)}
+                    className={cn(
+                      'w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2',
+                      nomeEdit.trim() ? 'border-gray-200 focus:ring-indigo-400' : 'border-red-400 focus:ring-red-400',
+                    )}
+                  />
+                  {!nomeEdit.trim() && <p className="text-[11px] text-red-600 mt-1">O nome não pode ficar vazio.</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Telefone</label>
+                  <input
+                    value={telefoneEdit}
+                    onChange={(e) => setTelefoneEdit(e.target.value)}
+                    placeholder="(11) 99999-9999"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">E-mail</label>
+                  <input
+                    type="email"
+                    value={emailEdit}
+                    onChange={(e) => setEmailEdit(e.target.value)}
+                    placeholder="contato@empresa.com.br"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Observações</label>
+                <textarea
+                  value={observacoes}
+                  onChange={(e) => setObservacoes(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
+                  placeholder="Ex.: ligou pedindo proposta, retorna na sexta..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
+              <button onClick={() => enriquecer(editando)} className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
                 <i className="fas fa-wand-magic-sparkles mr-1" /> Enriquecer com IA
               </button>
-              <div className="flex gap-3">
-                <button onClick={() => setEditando(null)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
-                  Cancelar
-                </button>
-                <button onClick={salvarObservacoes} className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90">
-                  <i className="fas fa-save mr-2" /> Salvar
-                </button>
-              </div>
+              {/* Salvar grande em gradiente (Fitts + von Restorff) */}
+              <button
+                onClick={salvarDetalhes}
+                disabled={salvando}
+                className="flex-1 md:flex-none px-8 py-3 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90 disabled:opacity-60"
+              >
+                <i className={cn('fas fa-save mr-2', salvando && 'fa-spin')} />
+                {salvando ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
             </div>
           </div>
         )}
       </Modal>
     </div>
   );
+}
+
+function Dado({ rotulo, valor }: { rotulo: string; valor?: string | number | null }) {
+  if (valor === undefined || valor === null || valor === '') return null;
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-gray-400">{rotulo}</p>
+      <p className="text-gray-700 break-words">{String(valor)}</p>
+    </div>
+  );
+}
+
+function dadoExtra(lead: Lead, ...chaves: string[]): string {
+  const extras = (lead.extras || {}) as Record<string, unknown>;
+  for (const chave of chaves) {
+    if (extras[chave] !== undefined && extras[chave] !== null && extras[chave] !== '') {
+      return String(extras[chave]);
+    }
+  }
+  return '';
 }
 
 function Campo({

@@ -72,6 +72,9 @@ export function KanbanBoard({ leads, onMover, onAbrirLead }: Props) {
   const aoIniciar = (e: DragStartEvent) => {
     snapshot.current = itens;
     setArrastando(String(e.active.id));
+    // Suprime o clique que o browser dispara no pointerup após o drag —
+    // evita abrir o modal de detalhes ao soltar um card.
+    globalThis.__leadmasterArrastando = true;
   };
 
   const aoArrastarSobre = useCallback((e: DragOverEvent) => {
@@ -93,6 +96,10 @@ export function KanbanBoard({ leads, onMover, onAbrirLead }: Props) {
 
   const aoTerminar = async (e: DragEndEvent) => {
     setArrastando(null);
+    // Reabilita o clique dos cards depois que o drag termina.
+    setTimeout(() => {
+      globalThis.__leadmasterArrastando = false;
+    }, 250);
     const activeId = String(e.active.id);
     if (!e.over) {
       // Soltou fora de todas as colunas: reverte para a posição do início.

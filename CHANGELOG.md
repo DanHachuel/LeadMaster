@@ -37,6 +37,28 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.25] — 2026-11-09
+
+### Adicionado
+
+- **Modal de Detalhes do Lead no CRM (clique no card):**
+  - Rota `PUT /api/crm/leads/{lead_id}` — edição de `nome`, `telefone` e `email`
+    (todos opcionais no payload); nome vazio → **400** (prevenção de erros),
+    lead inexistente → **404**, payload sem campos editáveis → **400**.
+  - Card do Kanban passa a abrir os detalhes no **clique simples** (antes era
+    duplo clique); flag global suprime o clique disparado no pointerup após um
+    drag, então abrir detalhes e arrastar convivem sem conflito.
+  - Modal "Detalhes do Lead" exibe **todos os dados** — inclusive `extras`
+    (Site, Endereço, Avaliação, Seguidores, Username, Bio), tags, fonte e data
+    de criação — com **inputs de edição** para Nome/Telefone/E-mail pré-preenchidos
+    (vermelho + mensagem se o nome for apagado), textarea de observações e botão
+    **"Salvar Alterações"** grande em gradiente (Fitts + von Restorff), com
+    **spinner** durante o salvamento (Zeigarnik), toast de sucesso e
+    **atualização automática** do Kanban. O "Fechar" (X) permanece sutil.
+- **5 novos testes pytest** (`backend/tests/test_lead_edit_routes.py`): edição
+  completa, edição parcial (campos omitidos preservados), 404, nome vazio (400)
+  e payload sem campos editáveis (400).
+
 ## [0.1.24] — 2026-11-09
 
 ### Corrigido
