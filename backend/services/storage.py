@@ -20,6 +20,7 @@ LEADS_FILE = "leads.json"
 CAMPAIGNS_FILE = "campaigns.json"
 PIPELINE_FILE = "pipeline.json"
 CONFIG_FILE = "config.json"
+AGENTS_FILE = "agents.json"
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +354,47 @@ def delete_campaign(campaign_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Agentes de IA (status e prompt do sistema)
+# ---------------------------------------------------------------------------
+
+DEFAULT_AGENTS = {
+    "disparo": {
+        "status": "inativo",
+        "prompt": (
+            "Você é um especialista em prospecção consultiva. Escreva mensagens curtas, "
+            "educadas e personalizadas, sempre citando a empresa do lead. Nunca use "
+            "linguagem agressiva ou spam."
+        ),
+    },
+    "atendimento": {
+        "status": "inativo",
+        "prompt": (
+            "Você é o assistente de atendimento do LeadMaster. Responda de forma clara e "
+            "objetiva em português do Brasil, encaminhe dúvidas comerciais para o "
+            "responsável quando necessário."
+        ),
+    },
+}
+
+AGENTE_IDS = ("disparo", "atendimento")
+
+
+def get_agents() -> dict:
+    return _deep_merge(DEFAULT_AGENTS, _read(AGENTS_FILE, {}))
+
+
+def save_agent(agent_id: str, dados: dict) -> dict:
+    """Atualiza campos de um agente (status/prompt) e persiste em agents.json."""
+    with LOCK:
+        agents = get_agents()
+        if agent_id not in agents:
+            agents[agent_id] = {"status": "inativo", "prompt": ""}
+        agents[agent_id].update({k: v for k, v in dados.items() if k in ("status", "prompt")})
+        _write(AGENTS_FILE, agents)
+        return agents[agent_id]
+
+
+# ---------------------------------------------------------------------------
 # Seeds (primeira execução)
 # ---------------------------------------------------------------------------
 
@@ -433,6 +475,8 @@ def ensure_seeds() -> None:
             _write(CAMPAIGNS_FILE, _seed_campaigns())
         if not (d / CONFIG_FILE).exists():
             _write(CONFIG_FILE, DEFAULT_CONFIG)
+        if not (d / AGENTS_FILE).exists():
+            _write(AGENTS_FILE, DEFAULT_AGENTS)
 
 
 def limpar_seeds_demo() -> None:

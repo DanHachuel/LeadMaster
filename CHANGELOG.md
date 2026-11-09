@@ -37,6 +37,32 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.20] — 2026-11-09
+
+### Adicionado
+
+- **Módulo de Agentes de IA (controle e configuração):**
+  - Backend: `GET /api/agents` (status + prompt de cada agente, e flag
+    `llm_configurado`), `PUT /api/agents/{agent_id}/status` (ativo/inativo) e
+    `PUT /api/agents/{agent_id}/prompt` — persistência no novo arquivo
+    `storage/agents.json` (seed com prompts padrão em pt-BR).
+  - **Regra de bloqueio:** ativar o **Agente de Disparo** sem a chave do LLM
+    configurada retorna **400** com mensagem acionável ("Configure a API Key
+    do LLM em Ferramentas..."); desativar e o Atendimento são sempre
+    permitidos.
+  - Frontend: `frontend/src/pages/Agentes.tsx` reformulado em **dois cards
+    lado a lado** (Disparo / Atendimento): badge de status, **toggle grande**
+    (w-16 h-9 — Fitts), **pulso animado verde-esmeralda** e badge esmeralda
+    quando ativo (von Restorff + Zeigarnik), textarea do **Prompt do Sistema**
+    + botão "Salvar Prompt", toast específico ("Configure a API Key na aba
+    Ferramentas primeiro.") quando o bloqueio 400 ocorre, e **accordion** com
+    as configurações avançadas (modelo LLM/temperatura; modo texto/voz do
+    atendimento) — Lei de Hick.
+- **8 novos testes pytest** (`backend/tests/test_agents_routes.py`): listagem,
+  bloqueio do disparo sem LLM (400), ativação do atendimento, ativação do
+  disparo com LLM, desativação, status inválido/agente desconhecido (400/404),
+  persistência do prompt e erros de prompt.
+
 ## [0.1.19] — 2026-11-09
 
 ### Adicionado

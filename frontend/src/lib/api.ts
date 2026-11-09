@@ -120,7 +120,7 @@ export const api = {
   // Configuração
   config: {
     obter: () => req<AppConfig>('/config'),
-    salvar: (patch: Partial<AppConfig>) => req<AppConfig>('/config', { method: 'PUT', body: JSON.stringify(patch) }),
+    salvar: (patch: AppConfig | Record<string, unknown>) => req<AppConfig>('/config', { method: 'PUT', body: JSON.stringify(patch) }),
     testarLlm: () => req<{ ok: boolean; resposta?: string; mensagem?: string }>('/config/test/llm', corpo({})),
     testarIntegracao: (url: string) => req<{ ok: boolean; status_http?: number; mensagem?: string }>('/config/test/integracao', corpo({ url })),
   },
@@ -131,6 +131,15 @@ export const api = {
 
   // Agentes
   agentes: {
+    listar: () =>
+      req<{
+        llm_configurado: boolean;
+        agentes: Record<string, { status: 'ativo' | 'inativo'; prompt: string }>;
+      }>('/agents'),
+    status: (agent_id: string, status: 'ativo' | 'inativo') =>
+      req<{ ok: boolean; agent_id: string; status: string }>(`/agents/${agent_id}/status`, corpo({ status })),
+    salvarPrompt: (agent_id: string, prompt: string) =>
+      req<{ ok: boolean; agent_id: string; prompt: string }>(`/agents/${agent_id}/prompt`, corpo({ prompt })),
     templates: () => req<Record<string, string>>('/agents/templates'),
     salvarTemplates: (patch: Record<string, string>) =>
       req<Record<string, string>>('/agents/templates', { method: 'PUT', body: JSON.stringify(patch) }),

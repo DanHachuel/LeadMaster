@@ -553,6 +553,56 @@ def buscar_cnpj(dados: CnpjSearchIn):
 
 
 # ---------------------------------------------------------------------------
+# Agentes de IA (status + prompt do sistema)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/agents")
+def listar_agentes():
+    """Status e prompt de cada agente (disparo / atendimento)."""
+    agentes = storage.get_agents()
+    llm_ok = llm.configurado()
+    return {
+        "llm_configurado": llm_ok,
+        "agentes": {
+            agent_id: {
+                "status": agentes.get(agent_id, {}).get("status", "inativo"),
+                "prompt": agentes.get(agent_id, {}).get("prompt", ""),
+            }
+            for agent_id in storage.AGENTE_IDS
+        },
+    }
+
+
+@app.put("/api/agents/{agent_id}/status")
+def alterar_status_agente(agent_id: str, dados: dict):
+    """Liga/desliga um agente. Ativar o de disparo exige LLM configurada."""
+    if agent_id not in storage.AGENTE_IDS:
+        raise HTTPException(404, f"Agente desconhecido: {agent_id}. Use: disparo ou atendimento.")
+    status = (dados.get("status") or "").strip().lower()
+    if status not in ("ativo", "inativo"):
+        raise HTTPException(400, 'Status inválido. Use: ativo ou inativo.')
+    if status == "ativo" and agent_id == "disparo" and not llm.configurado():
+        raise HTTPException(
+            400,
+            "Configure a API Key do LLM em Ferramentas antes de ativar o Agente de Disparo.",
+        )
+    agente = storage.save_agent(agent_id, {"status": status})
+    return {"ok": True, "agent_id": agent_id, "status": agente["status"]}
+
+
+@app.put("/api/agents/{agent_id}/prompt")
+def salvar_prompt_agente(agent_id: str, dados: dict):
+    """Salva o prompt do sistema do agente em agents.json."""
+    if agent_id not in storage.AGENTE_IDS:
+        raise HTTPException(404, f"Agente desconhecido: {agent_id}. Use: disparo ou atendimento.")
+    prompt = dados.get("prompt")
+    if prompt is None:
+        raise HTTPException(400, "Informe o prompt do sistema.")
+    agente = storage.save_agent(agent_id, {"prompt": str(prompt)})
+    return {"ok": True, "agent_id": agent_id, "prompt": agente["prompt"]}
+
+
+# ---------------------------------------------------------------------------
 # Configuração e integrações
 # ---------------------------------------------------------------------------
 
