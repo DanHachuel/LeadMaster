@@ -12,6 +12,7 @@ venv/
 
 # Dados locais (runtime) — sementes são criadas automaticamente pelo backend
 storage/
+.runtime/
 roteiros/
 videos/
 

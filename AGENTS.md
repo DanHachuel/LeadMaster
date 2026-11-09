@@ -215,6 +215,22 @@ Gate de regressão: `backend/tests/test_launcher_protections.py` falha se qualqu
 dessas proteções desaparecer do launcher (inclusive `process.stdin.resume();`, o uso
 de `.unref()` ou a ausência do kill switch).
 
+### Runtime permanente — terminantemente proibido executar do cache do npx
+
+É **terminantemente proibido** executar o servidor a partir da pasta temporária do
+npx (`_npx\...`). Um processo rodando de lá segura o diretório e o próximo `npx
+install/update` falha com **`EBUSY`** antes mesmo de qualquer código do launcher
+ser carregado — por isso kill switch dentro do launcher não pode resolver isso.
+
+- O comando `install` **DEVE** copiar `backend/` e `frontend/dist/` para a pasta
+  permanente `<home>/.runtime` (apagando a anterior, após o kill switch liberar
+  os arquivos) e o `start` **DEVE** spawnar o Python a partir de
+  `<home>/.runtime/backend` — nunca de `__dirname`.
+- O `start` sem `.runtime` pronto se auto-aprovisiona (copia antes de subir);
+  com `.runtime` pronto, reutiliza sem recopiar.
+- O launcher ainda faz `process.chdir(home)` na entrada — nenhum processo nosso
+  mantém cwd dentro do cache do npx.
+
 ## 10. QA antes de commit/push
 
 1. `npm --prefix frontend run build` — build limpo (tsc + vite).

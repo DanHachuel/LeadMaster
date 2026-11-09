@@ -37,6 +37,31 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.17] — 2026-11-09
+
+### Corrigido
+
+- **Erro `EBUSY` do npx — migração para Runtime Permanente.** A 0.1.15 tentou
+  resolver com kill switch dentro do launcher, o que é impossível: o `EBUSY`
+  acontece no gerenciador de arquivos do `npx` (`_npx\...`) **antes** de o
+  `cli.mjs` ser carregado, então o kill switch nunca rodava. Causa raiz: o
+  `uvicorn` era spawnado com `cwd` dentro do cache do npx, segurando o
+  diretório. Nova arquitetura:
+  - Pasta permanente **`<home>/.runtime`** guarda `backend/` + `frontend/dist/`.
+  - `install`: kill switch (libera arquivos) → apaga o `.runtime` anterior →
+    copia esta versão do pacote para ele. O cache do npx nunca mais é tocado
+    por processos nossos.
+  - `start`: spawna o Python a partir de **`<home>/.runtime/backend`** (nunca
+    de `__dirname`); sem `.runtime` pronto, auto-aprovisiona; com pronto,
+    reutiliza sem recopiar.
+  - Launcher faz `process.chdir(home)` na entrada — cwd fora do cache.
+  - Regra inviolável documentada no AGENTS.md ("terminantemente proibido
+    executar o servidor a partir da pasta temporária do npx") + gate de
+    regressão (`.runtime`, `copiarParaRuntime`, `cpSync`, `rmSync`,
+    `path.join(runtime, 'backend')`, `process.chdir(homeLauncher)`).
+  - `.runtime/` adicionado ao `.gitignore`; `doctor` reporta o status do
+    runtime.
+
 ## [0.1.16] — 2026-11-09
 
 ### Adicionado

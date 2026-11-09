@@ -23,7 +23,7 @@
  */
 
 import { spawn, spawnSync, execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, appendFileSync, rmSync, cpSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
@@ -85,6 +85,41 @@ function ensureHome(home) {
   for (const dir of [home, path.join(home, 'storage')]) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Runtime permanente (regra inviolável do AGENTS.md)
+//
+// O servidor NUNCA executa a partir do cache do npx (`_npx\...`): um processo
+// rodando de lá segura o diretório e o npx falha com EBUSY na próxima
+// instalação — antes mesmo de qualquer código do launcher rodar (por isso o
+// kill switch sozinho não resolvia). Solução: `install` copia backend/ e
+// frontend/dist/ para <home>/.runtime e `start` executa de lá. O cache do npx
+// nunca é tocado por processos nossos.
+// ---------------------------------------------------------------------------
+
+function runtimeDir(home) {
+  return path.join(home, '.runtime');
+}
+
+function runtimePronto(home) {
+  return existsSync(path.join(runtimeDir(home), 'backend', 'main.py'));
+}
+
+/** Copia backend/ e frontend/dist/ do pacote para o runtime permanente. */
+function copiarParaRuntime(home) {
+  const runtime = runtimeDir(home);
+  rmSync(runtime, { recursive: true, force: true });
+  mkdirSync(runtime, { recursive: true });
+  cpSync(path.join(PKG_ROOT, 'backend'), path.join(runtime, 'backend'), {
+    recursive: true,
+    filter: (src) => !src.includes('__pycache__') && !src.endsWith('.pyc') && !src.includes(`${path.sep}.venv`),
+  });
+  const dist = path.join(PKG_ROOT, 'frontend', 'dist');
+  if (existsSync(path.join(dist, 'index.html'))) {
+    cpSync(dist, path.join(runtime, 'frontend', 'dist'), { recursive: true });
+  }
+  return runtime;
 }
 
 // ---------------------------------------------------------------------------
@@ -471,6 +506,14 @@ async function cmdInstall(args) {
   // Frontend (modo repositório): idempotente, só instala o que faltar.
   instalarModoFonte();
 
+  // Runtime permanente: reutiliza a porta inicial já validada pelo kill switch
+  // acima, apaga o .runtime anterior (arquivos liberados) e copia esta versão
+  // do pacote para lá. Daqui em diante o servidor NUNCA roda de dentro do
+  // cache do npx — o EBUSY acaba.
+  await encerrarInstanciaAnterior(portaInicial);
+  const runtime = copiarParaRuntime(home);
+  console.log(`✓ Runtime permanente preparado: ${runtime}`);
+
   console.log('');
   console.log('Instalação concluída. Para usar (comando único):');
   console.log('  npx --yes @danhachuel/leadmaster@latest');
@@ -524,12 +567,20 @@ function cmdStart(args) {
 
     // Comando único (estilo Thunderbolt): o start também se auto-prepara.
     // Modo fonte sem deps/build? Instala só o que faltar antes de subir.
-    // Pacote npx: UI já vem pronta (dist) e nada disto roda.
     if (existsSync(path.join(PKG_ROOT, 'frontend', 'package.json'))) {
       instalarModoFonte();
-    } else if (!existsSync(path.join(PKG_ROOT, 'frontend', 'dist', 'index.html'))) {
-      console.warn('⚠ Interface construída não encontrada (frontend/dist).');
     }
+
+    // Kill switch: se uma instância ANTIGA (runtime anterior) ainda ocupar a
+    // porta, ela é encerrada antes da nova assumir — nunca reutilizamos.
+    await encerrarInstanciaAnterior(portaInicial);
+
+    // Runtime permanente (regra inviolável): o servidor NUNCA roda de dentro
+    // do cache do npx (EBUSY na próxima instalação). Sem runtime pronto, o
+    // start se auto-aprovisiona copiando para <home>/.runtime; com runtime
+    // pronto, reutiliza (sem recopiar nada).
+    const runtime = runtimePronto(home) ? runtimeDir(home) : copiarParaRuntime(home);
+    console.log(`✓ Executando a partir do runtime permanente: ${runtime}`);
 
     // Workers nascem em grupo de processos próprio (detached: true =
     // CREATE_NEW_PROCESS_GROUP no Windows): sinais de Ctrl+C do terminal
@@ -537,7 +588,7 @@ function cmdStart(args) {
     // servidor Python continua rodando e só é encerrado pelo kill()
     // controlado abaixo (ou sobrevive para a próxima execução detectar).
     const child = spawn(python.cmd, [...python.args, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(porta), '--no-access-log'], {
-      cwd: path.join(PKG_ROOT, 'backend'),
+      cwd: path.join(runtime, 'backend'),
       env: {
         ...process.env,
         LEADMASTER_HOME: home,
@@ -674,6 +725,7 @@ async function cmdDoctor(args) {
   console.log(`Servidor UI ........ ${ativaEm ? `rodando em http://127.0.0.1:${ativaEm}` : `parado (porta inicial ${portaInicial})`}`);
   const hasDist = existsSync(path.join(PKG_ROOT, 'frontend', 'dist', 'index.html'));
   console.log(`Interface (dist) ... ${hasDist ? 'presente' : 'ausente (modo dev ou rebuild necessário)'}`);
+  console.log(`Runtime permanente . ${runtimePronto(home) ? `pronto (${runtimeDir(home)})` : 'ausente — rode install'}`);
   console.log('');
   console.log('Diagnóstico concluído.');
 }
@@ -720,6 +772,15 @@ const LOG_DIR = path.join(homeLauncher, 'storage', 'logs');
 mkdirSync(LOG_DIR, { recursive: true });
 const CONSOLE_LOG = path.join(LOG_DIR, 'launcher_console.log');
 [process.stdout, process.stderr].forEach((stream) => guardConsoleStream(stream, CONSOLE_LOG));
+
+// Nunca manter o cwd dentro do cache do npx: o launcher nasce com o cwd de
+// onde o usuário rodou o comando; assim que sabemos o home, saímos de lá —
+// nenhum processo nosso segura diretório do cache (fim do EBUSY no npx).
+try {
+  process.chdir(homeLauncher);
+} catch {
+  /* melhor esforço */
+}
 
 switch (command) {
   case 'install':

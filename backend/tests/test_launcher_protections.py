@@ -78,6 +78,19 @@ class TestLauncherProtections:
         assert "já está rodando" not in _conteudo().lower()
         assert "ja esta rodando" not in _conteudo().lower()
 
+    def test_runtime_permanente(self):
+        # Arquitetura anti-EBUSY: executar de <home>/.runtime, nunca do cache npx.
+        c = _conteudo()
+        assert ".runtime" in c
+        assert "copiarParaRuntime" in c
+        assert "runtimeDir" in c
+        assert "cpSync" in c  # cópia recursiva para o runtime
+        assert "rmSync" in c  # limpeza do runtime anterior
+        # O spawn do servidor usa o runtime, não o PKG_ROOT.
+        assert "path.join(runtime, 'backend')" in c
+        # O launcher sai do cache do npx logo na entrada.
+        assert "process.chdir(homeLauncher)" in c
+
     def test_sigterm_nao_absorvido(self):
         # SIGTERM/SIGBREAK são paradas legítimas: sempre encerram.
         c = _conteudo()
