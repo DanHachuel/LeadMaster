@@ -32,6 +32,14 @@ def _conf() -> dict:
     return storage.get_config()["extratores"]
 
 
+def _timeout_extrator(chave: str, padrao: int) -> int:
+    """Timeout de segurança configurável por extrator (Ferramentas → Extratores)."""
+    try:
+        return max(5, int(_conf().get(chave, padrao)))
+    except (TypeError, ValueError):
+        return padrao
+
+
 def _novo_lead_parcial() -> dict:
     return {"tags": [], "observacoes": "", "score": 50}
 
@@ -62,7 +70,19 @@ def extrair_google_maps(palavra_chave: str, localizacao: str, max_resultados: in
             outdir=str(outdir),
         )
         try:
-            resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, shell=False, creationflags=proc_flags.creationflags())
+            resultado = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=_timeout_extrator("timeout_maps_segundos", 300),
+                shell=False,
+                creationflags=proc_flags.creationflags(),
+            )
+        except subprocess.TimeoutExpired as e:
+            raise ExtratorErro(
+                f"Timeout na extração do Google Maps após {_timeout_extrator('timeout_maps_segundos', 300)}s. "
+                "Aumente o timeout em Ferramentas → Extratores ou reduza a quantidade de resultados."
+            ) from e
         except FileNotFoundError as e:
             raise ExtratorNaoConfigurado(f"Não foi possível executar o CLI do Google Maps Scraper: {e}") from e
         if resultado.returncode != 0:
@@ -78,7 +98,7 @@ def extrair_google_maps(palavra_chave: str, localizacao: str, max_resultados: in
 # Instagram (lucasoal/igmapper via CLI)
 # ---------------------------------------------------------------------------
 
-def extrair_instagram(profile_url: str) -> dict:
+def extrair_instagram(profile_url: str, limit: int = 10) -> dict:
     conf = _conf()
     cli = conf.get("igmapper_cli", "")
     if not cli or not Path(cli).exists():
@@ -88,10 +108,27 @@ def extrair_instagram(profile_url: str) -> dict:
         )
     with tempfile.TemporaryDirectory(prefix="leadmaster-ig-") as tmp:
         outdir = Path(tmp)
-        args_template = conf.get("igmapper_args", "--profile {url} --outdir {outdir}")
-        cmd = [cli] + _formatar_args(args_template, url=profile_url, outdir=str(outdir))
+        args_template = conf.get("igmapper_args", "--profile {url} --limit {limit} --outdir {outdir}")
+        cmd = [cli] + _formatar_args(
+            args_template,
+            url=profile_url,
+            limit=max(1, int(limit or 10)),
+            outdir=str(outdir),
+        )
         try:
-            resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=900, shell=False, creationflags=proc_flags.creationflags())
+            resultado = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=_timeout_extrator("timeout_instagram_segundos", 120),
+                shell=False,
+                creationflags=proc_flags.creationflags(),
+            )
+        except subprocess.TimeoutExpired as e:
+            raise ExtratorErro(
+                f"Timeout na extração do Instagram após {_timeout_extrator('timeout_instagram_segundos', 120)}s. "
+                "Aumente o timeout em Ferramentas → Extratores."
+            ) from e
         except FileNotFoundError as e:
             raise ExtratorNaoConfigurado(f"Não foi possível executar o igmapper: {e}") from e
         if resultado.returncode != 0:
@@ -113,6 +150,7 @@ def extrair_instagram(profile_url: str) -> dict:
 # for este valor, o extrator trabalha em modo MOCK (5–10 empresas fictícias) —
 # estabilidade e anti-bloqueio nesta fase. URL diferente = provedor real.
 CNPJ_PROVEDOR_PADRAO = "https://api.opencnpj.org"
+CNPJ_API_PADRAO = "https://brasilapi.com.br/api/cnpj/v1"
 
 
 def _so_digitos(texto: str) -> str:
@@ -123,14 +161,16 @@ def consulta_cnpj(cnpj: str) -> dict:
     cnpj = _so_digitos(cnpj)
     if len(cnpj) != 14:
         raise ExtratorErro("CNPJ inválido: use 14 dígitos (com ou sem pontuação).")
+    base = (_conf().get("cnpj_api_url") or CNPJ_API_PADRAO).rstrip("/")
+    url = f"{base}/{cnpj}"
     try:
-        r = httpx.get(f"https://brasilapi.com.br/api/cnpj/v1/{cnpj}", timeout=30)
+        r = httpx.get(url, timeout=30)
     except httpx.HTTPError as e:
-        raise ExtratorErro(f"Falha ao consultar a BrasilAPI: {e}") from e
+        raise ExtratorErro(f"Falha ao consultar a API de CNPJ ({base}): {e}") from e
     if r.status_code == 404:
-        raise ExtratorErro("CNPJ não encontrado na BrasilAPI.")
+        raise ExtratorErro("CNPJ não encontrado na API consultada.")
     if r.status_code >= 400:
-        raise ExtratorErro(f"BrasilAPI respondeu HTTP {r.status_code}: {r.text[:200]}")
+        raise ExtratorErro(f"API de CNPJ ({base}) respondeu HTTP {r.status_code}: {r.text[:200]}")
     d = r.json()
     endereco = " ".join(
         p

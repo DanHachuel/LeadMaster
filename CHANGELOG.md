@@ -37,6 +37,30 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.23] — 2026-11-09
+
+### Adicionado
+
+- **Extratores conectados de verdade (fim da dependência de mock quando
+  configurado):**
+  - **Google Maps:** executa o binário real (`gosom/google-maps-scraper`) com as
+    flags de isolamento (`creationflags`, sem janelas de CMD) e **timeout de
+    segurança configurável** (`timeout_maps_segundos`, padrão 300s).
+  - **Instagram:** passa **URL + limite** ao CLI (`igmapper_args` agora inclui
+    `{limit}`) com timeout configurável (`timeout_instagram_segundos`, padrão
+    120s).
+  - **CNPJ:** URL base da **BrasilAPI** vem do `config.json`
+    (`cnpj_api_url`) — permite trocar o provedor sem alterar código.
+  - **Regra de erro:** scraper **configurado** que falha (código ≠ 0, timeout,
+    executável inválido) retorna **HTTP 500 com mensagem clara** e **não salva
+    nada** (sem mock disfarçado, sem dados parciais). Sem scraper configurado,
+    o modo mock segue protegendo os primeiros testes.
+  - Ferramentas → Extratores ganhou os campos **URL base da BrasilAPI** e
+    **timeouts de segurança** (Maps/Instagram).
+- **4 novos testes pytest** (`backend/tests/test_extractors_real.py`): scraper
+  configurado falhando → 500 sem salvar, timeout → 500 "Timeout na extração",
+  falha do igmapper → 500 sem salvar, e mock preservado sem configuração.
+
 ## [0.1.22] — 2026-11-09
 
 ### Adicionado

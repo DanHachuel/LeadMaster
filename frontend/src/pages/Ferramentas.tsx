@@ -115,6 +115,12 @@ export function Ferramentas({ onConfigSalva }: { onConfigSalva?: (config: AppCon
         </Accordion>
         <Accordion titulo="CNPJ e Scrapling" icone="fas fa-building">
           <Campo
+            rotulo="BrasilAPI (consulta direta) — URL base"
+            valor={config.extratores.cnpj_api_url}
+            onChange={(v) => atualizar((c) => { c.extratores.cnpj_api_url = v; })}
+            placeholder="https://brasilapi.com.br/api/cnpj/v1"
+          />
+          <Campo
             rotulo="Provedor de busca CNAE/UF — URL"
             valor={config.extratores.cnpj_provedor_busca}
             onChange={(v) => atualizar((c) => { c.extratores.cnpj_provedor_busca = v; })}
@@ -126,6 +132,24 @@ export function Ferramentas({ onConfigSalva }: { onConfigSalva?: (config: AppCon
             onChange={(v) => atualizar((c) => { c.extratores.scrapling_cli = v; })}
             placeholder="Caminho do CLI Scrapling"
           />
+        </Accordion>
+        <Accordion titulo="Timeouts de segurança (segundos)" icone="fas fa-clock">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CampoNum
+              rotulo="Extrator Google Maps"
+              valor={config.extratores.timeout_maps_segundos ?? 300}
+              onChange={(v) => atualizar((c) => { c.extratores.timeout_maps_segundos = v; })}
+            />
+            <CampoNum
+              rotulo="Extrator Instagram"
+              valor={config.extratores.timeout_instagram_segundos ?? 120}
+              onChange={(v) => atualizar((c) => { c.extratores.timeout_instagram_segundos = v; })}
+            />
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Tempo máximo de execução dos scrapers reais. Ao estourar, a extração falha com mensagem
+            clara (HTTP 500) e nada é salvo.
+          </p>
         </Accordion>
       </Cartao>
 

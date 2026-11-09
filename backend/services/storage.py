@@ -114,9 +114,12 @@ DEFAULT_CONFIG = {
             '--kw "{palavra_chave}" --loc "{localizacao}" --lang pt --email --max {max_resultados} --outdir "{outdir}"'
         ),
         "igmapper_cli": "",
-        "igmapper_args": "--profile {url} --outdir {outdir}",
+        "igmapper_args": "--profile {url} --limit {limit} --outdir {outdir}",
         "scrapling_cli": "",
+        "cnpj_api_url": "https://brasilapi.com.br/api/cnpj/v1",
         "cnpj_provedor_busca": "https://api.opencnpj.org",
+        "timeout_maps_segundos": 300,
+        "timeout_instagram_segundos": 120,
     },
     "agentes": {
         "disparo": {

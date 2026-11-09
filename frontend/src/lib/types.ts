@@ -96,7 +96,10 @@ export interface AppConfig {
     igmapper_cli: string;
     igmapper_args: string;
     scrapling_cli: string;
+    cnpj_api_url: string;
     cnpj_provedor_busca: string;
+    timeout_maps_segundos?: number;
+    timeout_instagram_segundos?: number;
   };
   agentes: {
     disparo: { templates: { texto: string; audio: string }; minha_empresa: string; delay_entre_envios_segundos: number };

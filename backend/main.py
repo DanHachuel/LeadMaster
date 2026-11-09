@@ -430,15 +430,16 @@ def extrair_instagram_endpoint(dados: InstagramExtractIn):
     leads: list = []
 
     if cli and Path(cli).exists():
+        # Scraper REAL configurado: executa e propaga erro amigavel (HTTP 500) se
+        # falhar — nunca salvamos dados parciais/corrompidos.
         try:
-            resultado = extractors.extrair_instagram(dados.profile_url)
+            resultado = extractors.extrair_instagram(dados.profile_url, dados.limit)
             leads = resultado.get("leads", [])
-            if leads:
-                origem = "cli"
-            else:
-                aviso = "O igmapper rodou mas não retornou leads — usando dados mockados."
-        except (extractors.ExtratorNaoConfigurado, extractors.ExtratorErro) as e:
-            aviso = f"igmapper indisponível ({e}); usando dados mockados."
+            origem = "cli"
+        except extractors.ExtratorNaoConfigurado as e:
+            raise HTTPException(500, f"Scraper nao configurado corretamente: {e}")
+        except extractors.ExtratorErro as e:
+            raise HTTPException(500, str(e))
 
     if not leads:
         leads = extractors.gerar_mock_instagram(dados.profile_url, dados.limit)
@@ -513,15 +514,16 @@ def extrair_maps(dados: MapsExtractIn):
     leads: list = []
 
     if cli and Path(cli).exists():
+        # Scraper REAL configurado: executa e propaga erro amigavel (HTTP 500)
+        # se falhar — nunca salvamos dados parciais/corrompidos.
         try:
             resultado = extractors.extrair_google_maps(dados.keyword, dados.location, max_resultados)
             leads = resultado.get("leads", [])
-            if leads:
-                origem = "cli"
-            else:
-                aviso = "O scraper rodou mas não retornou leads — usando dados mockados."
-        except (extractors.ExtratorNaoConfigurado, extractors.ExtratorErro) as e:
-            aviso = f"Scraper indisponível ({e}); usando dados mockados."
+            origem = "cli"
+        except extractors.ExtratorNaoConfigurado as e:
+            raise HTTPException(500, f"Scraper nao configurado corretamente: {e}")
+        except extractors.ExtratorErro as e:
+            raise HTTPException(500, str(e))
 
     if not leads:
         leads = extractors.gerar_mock_maps(dados.keyword, dados.location, dados.limit)
