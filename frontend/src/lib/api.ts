@@ -100,7 +100,11 @@ export const api = {
         '/extractors/maps',
         corpo(dados),
       ),
-    instagram: (profile_url: string) => req<ResultadoExtracao>('/extract/instagram', corpo({ profile_url })),
+    instagram: (profile_url: string, limit?: number) =>
+      req<{ origem: string; aviso: string; extraidos: Partial<Lead>[]; importados: Lead[]; duplicados: number }>(
+        '/extractors/instagram',
+        corpo({ profile_url, limit }),
+      ),
     cnpj: (cnpj: string) => req<Partial<Lead>>('/extract/cnpj', corpo({ cnpj })),
     cnpjBusca: (dados: { cnae: string; uf: string; quantidade?: number }) =>
       req<ResultadoExtracao>('/extract/cnpj/search', corpo(dados)),

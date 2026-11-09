@@ -117,6 +117,11 @@ class MapsExtractIn(BaseModel):
     limit: int = 10
 
 
+class InstagramExtractIn(BaseModel):
+    profile_url: str = Field(min_length=6)
+    limit: int = 10
+
+
 class CnpjIn(BaseModel):
     cnpj: str = Field(min_length=8)
 
@@ -378,6 +383,46 @@ def remover_campanha(campaign_id: str):
 # Extratores
 # ---------------------------------------------------------------------------
 
+@app.post("/api/extractors/instagram", status_code=201)
+def extrair_instagram_endpoint(dados: InstagramExtractIn):
+    """Extrator de leads do Instagram (seguidores de um perfil).
+
+    Sem igmapper configurado, gera mock de 5–10 leads (segurança anti-bloqueio
+    de conta); com `lucasoal/igmapper` configurado em Ferramentas, executa o
+    CLI real com as flags de isolamento de processos. Leads salvos em leads.json
+    na coluna "Novos Leads".
+    """
+    conf = storage.get_config()["extratores"]
+    cli = conf.get("igmapper_cli", "")
+
+    origem = "mock"
+    aviso = ""
+    leads: list = []
+
+    if cli and Path(cli).exists():
+        try:
+            resultado = extractors.extrair_instagram(dados.profile_url)
+            leads = resultado.get("leads", [])
+            if leads:
+                origem = "cli"
+            else:
+                aviso = "O igmapper rodou mas não retornou leads — usando dados mockados."
+        except (extractors.ExtratorNaoConfigurado, extractors.ExtratorErro) as e:
+            aviso = f"igmapper indisponível ({e}); usando dados mockados."
+
+    if not leads:
+        leads = extractors.gerar_mock_instagram(dados.profile_url, dados.limit)
+
+    importados = storage.import_leads(leads)
+    return {
+        "origem": origem,
+        "aviso": aviso,
+        "extraidos": leads,
+        "importados": importados["importados"],
+        "duplicados": len(importados["duplicados"]),
+    }
+
+
 @app.post("/api/extractors/maps", status_code=201)
 def extrair_maps(dados: MapsExtractIn):
     """Extrator de leads do Google Maps.
@@ -418,16 +463,6 @@ def extrair_maps(dados: MapsExtractIn):
         "importados": importados["importados"],
         "duplicados": len(importados["duplicados"]),
     }
-
-
-@app.post("/api/extract/instagram")
-def extrair_instagram(dados: InstagramIn):
-    try:
-        return extractors.extrair_instagram(dados.profile_url)
-    except extractors.ExtratorNaoConfigurado as e:
-        raise HTTPException(400, str(e))
-    except extractors.ExtratorErro as e:
-        raise HTTPException(502, str(e))
 
 
 @app.post("/api/extract/cnpj")

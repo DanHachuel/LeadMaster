@@ -37,6 +37,35 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.11] — 2026-11-08
+
+### Adicionado
+
+- **Extrator de Leads (Instagram)** — segunda fonte dedicada, mesmo padrão do Maps:
+  - Rota `POST /api/extractors/instagram` (`profile_url`, `limit`): sem igmapper
+    configurado gera **mock de 5–10 leads** (segurança anti-bloqueio de conta);
+    com `lucasoal/igmapper` configurado em Ferramentas, executa o CLI real com as
+    flags de isolamento (`creationflags`). Leads salvos em `leads.json` na coluna
+    **"Novos Leads"**.
+  - Página `frontend/src/pages/ExtratorInstagram.tsx` (rota `/extrator-instagram`,
+    link no menu lateral): campo de URL do perfil + slider de quantidade, botão
+    **"Iniciar Extração"** em gradiente (von Restorff/Fitts), **barra de progresso
+    animada** "Buscando seguidores..." (Zeigarnik), tabela de resultados
+    (Nome/Username, Telefone, Fonte, Seguidores) e botão **"Ir para o CRM"**.
+  - Opções avançadas (apenas contas comerciais, mínimo de seguidores) escondidas
+    em accordion (Lei de Hick).
+  - Aba Instagram duplicada em Extratores removida — a página agora tem apenas
+    CNPJ + atalhos para as duas páginas dedicadas (Maps e Instagram).
+
+### Corrigido
+
+- **Launcher — terminal preso (5ª regra inviolável):** `process.stdin.resume()`
+  mantém o Node (e a PTY do MobaXterm, e com ela o uvicorn) vivos indefinidamente;
+  `process.on('exit')` mata o worker Python em qualquer caminho de saída; `.unref()`
+  eliminado também dos comentários. Gate de regressão atualizado
+  (`test_launcher_protections.py`): falha se `process.stdin.resume()`, o ciclo de
+  vida vinculado ou o isolamento desaparecerem.
+
 ## [0.1.10] — 2026-11-08
 
 ### Adicionado

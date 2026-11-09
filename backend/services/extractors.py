@@ -278,6 +278,55 @@ def gerar_mock_maps(keyword: str, location: str, limit: int = 10) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Instagram — mock para teste inicial (anti-bloqueio de conta)
+# ---------------------------------------------------------------------------
+
+_HANDLES_MOCK = [
+    "ju.moreira", "rafa.santos", "carol.dias", "pedro.lima", "bia.rocha",
+    "thi.alves", "fer.mendes", "lu.gabriel", "nai.barbosa", "vi.carvalho",
+]
+
+_PRIMEIROS_MOCK = ["Juliana", "Rafael", "Carolina", "Pedro", "Beatriz", "Thiago", "Fernanda", "Lucas", "Naiane", "Vitor"]
+
+
+def gerar_mock_instagram(profile_url: str, limit: int = 10) -> list:
+    """Gera 5 a 10 leads fictícios de seguidores do Instagram para teste.
+
+    Usado quando o igmapper (lucasoal/igmapper) não está configurado — evita
+    bloqueios de conta nos primeiros testes. Com o CLI configurado em
+    Ferramentas, `extrair_instagram` (com flags de isolamento) é usada no lugar.
+    """
+    quantidade = max(5, min(int(limit or 10), 10))
+    perfil = (profile_url or "").rstrip("/").split("/")[-1] or "perfil"
+    leads = []
+    for i in range(quantidade):
+        handle = _HANDLES_MOCK[i % len(_HANDLES_MOCK)]
+        nome = f"{_PRIMEIROS_MOCK[i % len(_PRIMEIROS_MOCK)]} Seguidores {i + 1:02d}"
+        ddd = 21 + (i * 5) % 79
+        telefone = f"({ddd}) 9{2000 + i:04d}-{5000 + i:04d}"
+        leads.append(
+            {
+                "nome": nome,
+                "telefone": telefone,
+                "email": f"{handle}@gmail.com",
+                "fonte": "Instagram",
+                "etapa": "leads",
+                "empresa": nome,
+                "cidade": "São Paulo/SP",
+                "score": 40 + (i * 6) % 40,
+                "tags": ["instagram"],
+                "extras": {
+                    "username": handle,
+                    "perfil_origem": perfil,
+                    "seguidores": 800 + i * 137,
+                    "bio": f"seguidor de @{perfil}",
+                },
+            }
+        )
+    return leads
+
+
+# ---------------------------------------------------------------------------
 # Utilitários de parsing tolerante
 # ---------------------------------------------------------------------------
 

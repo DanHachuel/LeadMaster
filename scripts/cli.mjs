@@ -459,10 +459,24 @@ function cmdStart(args) {
 
     // Ciclo de vida vinculado (regra inviolável do AGENTS.md): se o Python
     // cai, o launcher cai junto — nunca fica preso ao terminal sem servidor.
-    // O worker NUNCA é criado com .unref(): o pai não pode morrer sozinho.
+    // O worker nunca é desreferenciado do event loop: o pai não pode morrer
+    // sozinho enquanto o filho vive.
     child.on('close', (code) => {
       console.log('Servidor encerrado');
       process.exit(code === null ? 1 : code);
+    });
+
+    // Launcher morrendo encerra o worker e vice-versa (regra inviolável):
+    // qualquer caminho de saída (erro inesperado, falha de health, sinais)
+    // leva o worker Python junto — nada de processos órfãos na máquina.
+    process.on('exit', () => {
+      if (child && child.pid) {
+        if (platform() === 'win32') {
+          spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
+        } else {
+          child.kill('SIGTERM');
+        }
+      }
     });
 
     const stop = () => {

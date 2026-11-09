@@ -1,23 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import type { AppConfig, Lead, ResultadoExtracao } from '../lib/types';
+import type { Lead, ResultadoExtracao } from '../lib/types';
 import { Accordion } from '../components/Accordion';
-import { StatusBadge } from '../components/StatusBadge';
 import { useToast } from '../components/Toast';
 import { cn, mascararTelefone } from '../lib/format';
 
-type Aba = 'instagram' | 'cnpj';
+type Aba = 'cnpj';
 
 const ABAS: { id: Aba; rotulo: string; icone: string }[] = [
-  { id: 'instagram', rotulo: 'Instagram', icone: 'fab fa-instagram' },
   { id: 'cnpj', rotulo: 'CNPJ', icone: 'fas fa-building' },
 ];
 
 export function Extratores() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const aba = (params.get('tab') as Aba) || 'instagram';
+  const aba = (params.get('tab') as Aba) || 'cnpj';
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -38,14 +36,21 @@ export function Extratores() {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => navigate('/extrator-maps')}
-          className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
-        >
-          <i className="fas fa-map-marked-alt mr-1" /> Extrator Maps → página dedicada
-        </button>
+        <div className="flex items-center gap-4 text-sm">
+          <button
+            onClick={() => navigate('/extrator-maps')}
+            className="text-indigo-600 hover:text-indigo-800 font-medium"
+          >
+            <i className="fas fa-map-marked-alt mr-1" /> Extrator Maps
+          </button>
+          <button
+            onClick={() => navigate('/extrator-instagram')}
+            className="text-indigo-600 hover:text-indigo-800 font-medium"
+          >
+            <i className="fab fa-instagram mr-1" /> Extrator Instagram
+          </button>
+        </div>
       </div>
-      {aba === 'instagram' && <ExtratorInstagram />}
       {aba === 'cnpj' && <ExtratorCnpj />}
     </div>
   );
@@ -152,96 +157,6 @@ function detalhes(lead: Partial<Lead>): string {
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// Instagram
-// ---------------------------------------------------------------------------
-
-function ExtratorInstagram() {
-  const { toast } = useToast();
-  const [url, setUrl] = useState('');
-  const [resultados, setResultados] = useState<ResultadoExtracao | null>(null);
-  const [carregando, setCarregando] = useState(false);
-  const [importando, setImportando] = useState(false);
-  const [config, setConfig] = useState<AppConfig | null>(null);
-
-  useEffect(() => {
-    api.config.obter().then(setConfig).catch(() => undefined);
-  }, []);
-
-  const extrair = async () => {
-    if (!url.includes('instagram.com')) {
-      toast('erro', 'Informe a URL do perfil (ex.: https://instagram.com/perfil).');
-      return;
-    }
-    setCarregando(true);
-    setResultados(null);
-    try {
-      const r = await api.extrair.instagram(url.trim());
-      setResultados(r);
-      toast('sucesso', 'Dados extraídos — revise e importe.');
-    } catch (e) {
-      toast('erro', e instanceof Error ? e.message : 'Falha na extração.');
-    } finally {
-      setCarregando(false);
-    }
-  };
-
-  const importar = async (leads: Partial<Lead>[]) => {
-    setImportando(true);
-    try {
-      const r = await api.leads.importar(leads);
-      toast('sucesso', `${r.importados.length} importados, ${r.duplicados.length} duplicados ignorados.`);
-      setResultados(null);
-    } catch (e) {
-      toast('erro', e instanceof Error ? e.message : 'Falha ao importar.');
-    } finally {
-      setImportando(false);
-    }
-  };
-
-  const cliOk = !!config?.extratores.igmapper_cli;
-
-  return (
-    <div className="space-y-5">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">Extraia contatos públicos de um perfil do Instagram.</p>
-          <StatusBadge status={cliOk ? 'ativo' : 'inativo'} rotulo={cliOk ? 'igmapper configurado' : 'igmapper não configurado'} />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-3">
-            <label className="block text-xs font-medium text-gray-500 mb-1">URL do perfil *</label>
-            <input
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://www.instagram.com/perfil_do_negocio/"
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
-            />
-          </div>
-        </div>
-        <button
-          onClick={extrair}
-          disabled={carregando}
-          className="w-full md:w-auto px-8 py-3 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90 transition disabled:opacity-60"
-        >
-          <i className={cn('fab fa-instagram mr-2', carregando && 'fa-spin')} />
-          {carregando ? 'Extraindo...' : 'Extrair do Instagram'}
-        </button>
-        <Accordion titulo="Como instalar o igmapper" icone="fas fa-circle-question">
-          <ol className="text-xs text-gray-500 space-y-1 list-decimal pl-4">
-            <li>
-              Instale: <code className="bg-gray-100 px-1 rounded">github.com/lucasoal/igmapper</code>
-            </li>
-            <li>
-              Informe o caminho do CLI em <strong>Ferramentas → Extratores</strong>.
-            </li>
-          </ol>
-        </Accordion>
-      </div>
-      {resultados && <Resultados resultados={resultados} onImportar={importar} importando={importando} />}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // CNPJ
 // ---------------------------------------------------------------------------
