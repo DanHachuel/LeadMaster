@@ -37,6 +37,27 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.13] — 2026-11-08
+
+### Adicionado
+
+- **Versão dinâmica na sidebar** — a barra lateral exibe **LeadMaster `v0.1.13`**
+  (badge discreto ao lado do logotipo, `text-[10px]` em indigo sobre o fundo
+  escuro `#1e1b4b`):
+  - `frontend/vite.config.ts`: `define: { __APP_VERSION__: JSON.stringify(pkg.version) }`
+    lendo o `package.json` da **raiz** — cada release no NPM (bump de versão)
+    atualiza a UI **automaticamente**, sem nenhuma alteração manual no código
+    React;
+  - `frontend/src/vite-env.d.ts`: `declare const __APP_VERSION__: string;`;
+  - `frontend/src/components/Sidebar.tsx`: badge `v{__APP_VERSION__}` no header.
+
+### Corrigido
+
+- **Launcher — casa arrumada:** consolidação do `process.on('exit')` duplicado
+  (haviam dois handlers matando o worker Python; ficou apenas o mais forte, com
+  `taskkill /T /F` no Windows) — o gate de regressão continua falhando se o ciclo
+  de vida vinculado ou o terminal preso desaparecerem.
+
 ## [0.1.12] — 2026-11-08
 
 ### Adicionado

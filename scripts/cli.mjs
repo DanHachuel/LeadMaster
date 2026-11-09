@@ -466,9 +466,11 @@ function cmdStart(args) {
       process.exit(code === null ? 1 : code);
     });
 
-    // Launcher morrendo encerra o worker e vice-versa (regra inviolável):
-    // qualquer caminho de saída (erro inesperado, falha de health, sinais)
-    // leva o worker Python junto — nada de processos órfãos na máquina.
+    // Launcher morrendo encerra o worker (e vice-versa, via close acima) —
+    // handler ÚNICO de saída (regra inviolável): qualquer caminho de saída
+    // (erro inesperado, falha de health, sinais) leva o worker Python junto
+    // — nada de processos órfãos na máquina. No Windows, taskkill /T /F
+    // derruba a árvore inteira do uvicorn.
     process.on('exit', () => {
       if (child && child.pid) {
         if (platform() === 'win32') {
@@ -487,16 +489,6 @@ function cmdStart(args) {
         child.kill('SIGTERM');
       }
     };
-
-    // Morte do launcher → morte do filho (e vice-versa, via close acima):
-    // o uvicorn nunca fica órfão no terminal quando o Node é encerrado.
-    process.on('exit', () => {
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        /* filho já encerrou — nada a fazer */
-      }
-    });
 
     console.log(`→ Subindo servidor local em ${url} ...`);
     const health = await waitForHealth(porta, 120000);

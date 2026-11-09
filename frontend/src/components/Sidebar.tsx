@@ -68,6 +68,11 @@ export function Sidebar({ onSair }: Props) {
       <div className="p-6 border-b border-gray-700">
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <span className="text-2xl">⚡</span>LeadMaster
+          {/* Versão injetada em build time (__APP_VERSION__ do package.json da
+              raiz) — atualiza sozinha a cada release no NPM. */}
+          <span className="text-[10px] font-medium text-indigo-300 border border-indigo-400/40 rounded-md px-1.5 py-0.5">
+            v{__APP_VERSION__}
+          </span>
         </h1>
       </div>
 
