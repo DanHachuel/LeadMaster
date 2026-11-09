@@ -690,6 +690,16 @@ function cmdStart(args) {
     // nem de npx — NUNCA REMOVER.
     process.stdin.resume();
 
+    // Rede de segurança (regra inviolável do AGENTS.md): se o event loop
+    // esvaziar (stdin em EOF, timer perdido, qualquer surpresa do terminal/
+    // PTY do MobaXterm), o Node re-ativa o keep-alive no 'beforeExit' em vez
+    // de encerrar — o prompt NUNCA é devolvido e o uvicorn não fica órfão.
+    // Erros no stream de stdin também nunca derrubam o launcher.
+    process.stdin.on('error', () => {});
+    process.on('beforeExit', () => {
+      setInterval(() => {}, 1000);
+    });
+
     console.log(`✓ LeadMaster no ar em ${url} (dados: ${home})`);
     console.log('');
     console.log(`ℹ Abra ${url} no navegador quando quiser — o LeadMaster nunca abre janelas sozinho.`);

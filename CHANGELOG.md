@@ -37,6 +37,38 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.24] — 2026-11-09
+
+### Corrigido
+
+- **Launcher — regressão do terminal preso investigada e blindagem reforçada** —
+   usuário reportou o prompt do MobaXterm voltando logo após "LeadMaster no ar"
+   na 0.1.21 (runtime permanente). A investigação mostrou que o fluxo publicado
+   **mantém** as proteções (`process.stdin.resume();`, `setInterval`,
+   `child.on('exit')`/`close`, `process.on('exit')`, sem `.unref()`) e que uma
+   morte silenciosa assim — sem nenhum log do handler de saída — só ocorre por
+   `SIGKILL`/`taskkill /F` (ex.: outra execução `install`/`start` matando a
+   instância anterior pelo kill switch, ou fechamento forçado da aba). Mesmo
+   assim, o launcher foi reforçado e os gates agora validam o **fluxo**:
+   - **Rede de segurança no `cmdStart`:** `process.on('beforeExit')` re-arma o
+     `setInterval` se o event loop esvaziar (stdin em EOF, timer perdido,
+     surpresa de PTY) — o Node jamais encerra sozinho; erros do stream de
+     stdin (`process.stdin.on('error')`) são ignorados;
+   - **Gates de fluxo (`test_launcher_protections.py`):** novo helper
+     `_corpo_cmd_start()` extrai o corpo da função para garantir que
+     `spawn`, `process.stdin.resume();`, `setInterval`, `child.on('exit')`,
+     `child.on('close')`, `process.on('exit')` e `beforeExit` existam **dentro
+     do `start`** (não no `install` nem em função morta) e que **nenhum
+     `process.exit(`** apareça após o terminal ser preso — a saída só por ciclo
+     de vida do filho ou por `SIGTERM`/`SIGBREAK`;
+   - **AGENTS.md:** regra 2 do launcher documenta a rede de segurança e a
+     exigência de posição (após o spawn, no fluxo do start).
+- **Diagnóstico rápido para o usuário:** com a regra acima, se o prompt voltar
+  sem as linhas "Encerrando LeadMaster..." (SIGTERM/SIGBREAK) ou "Servidor
+  local encerrou com código N" (Python caiu), a causa é externa ao launcher
+  (outra execução ou fechamento forçado) — o espelho
+  `storage/logs/launcher_console.log` mostra exatamente qual caminho ocorreu.
+
 ## [0.1.23] — 2026-11-09
 
 ### Adicionado

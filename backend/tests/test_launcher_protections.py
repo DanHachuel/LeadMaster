@@ -23,6 +23,15 @@ def _conteudo() -> str:
     return CAMINHO.read_text(encoding="utf-8")
 
 
+def _corpo_cmd_start() -> str:
+    """Corpo da função cmdStart — valida o FLUXO do start (não só strings)."""
+    c = _conteudo()
+    assert "function cmdStart(" in c, "função cmdStart não encontrada"
+    inicio = c.index("function cmdStart(")
+    fim = c.index("async function cmdDoctor")
+    return c[inicio:fim]
+
+
 class TestLauncherProtections:
     def test_keepalivo(self):
         assert "setInterval(() => {}, 1000)" in _conteudo()
@@ -43,6 +52,28 @@ class TestLauncherProtections:
         assert "netstat" in c or "lsof" in c  # descoberta do PID pela porta
         # Avisar que já existe instância no ar é proibido (impede atualizações).
         assert "já está rodando" not in c
+
+    def test_keepalive_no_fluxo_do_start(self):
+        # Gate de FLUXO (regressão da 0.1.21): as proteções precisam existir
+        # dentro do cmdStart — no install, em função morta ou em bloco errado
+        # não valem. A morte prematura do Node devolve o prompt do MobaXterm.
+        corpo = _corpo_cmd_start()
+        assert "spawn(" in corpo  # worker Python é spawnado no start
+        assert "process.stdin.resume();" in corpo  # terminal preso
+        assert "setInterval(() => {}, 1000)" in corpo  # keep-alive
+        assert "beforeExit" in corpo  # rede de segurança do event loop
+        assert "child.on('exit'" in corpo or 'child.on("exit"' in corpo
+        assert "child.on('close'" in corpo or 'child.on("close"' in corpo
+        assert "process.on('exit'" in corpo or 'process.on("exit"' in corpo
+
+    def test_start_nunca_chama_exit_apos_terminal_preso(self):
+        # Após o terminal ser preso, nenhum caminho de sucesso chama
+        # process.exit — a saída só ocorre pelo ciclo de vida do filho
+        # (child exit/close) ou por sinais de parada legítima.
+        corpo = _corpo_cmd_start()
+        pos = corpo.index("process.stdin.resume();")
+        fim_iife = corpo.index("})().catch(")  # catch de erro fatal fica de fora
+        assert "process.exit(" not in corpo[pos:fim_iife]
 
     def test_ciclo_de_vida_vinculado(self):
         c = _conteudo()
