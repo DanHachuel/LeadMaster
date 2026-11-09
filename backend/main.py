@@ -104,7 +104,9 @@ class CampaignIn(BaseModel):
     nome: str = Field(min_length=1)
     canal: str = "texto"
     template: str = "texto"
+    mensagem: str = ""
     lead_ids: list[str] = []
+    filtro_etapa: str | None = None
 
 
 class InstagramIn(BaseModel):
@@ -354,8 +356,30 @@ def listar_campanhas():
 @app.post("/api/campaigns", status_code=201)
 def criar_campanha(campaign_in: CampaignIn):
     campaign = campaign_in.model_dump()
+    # Filtro por etapa do CRM: sem lead_ids explícitos, seleciona os leads da
+    # etapa escolhida (ex.: "Novos Leads").
+    if not campaign["lead_ids"] and campaign.get("filtro_etapa"):
+        _validar_etapa(campaign["filtro_etapa"])
+        campaign["lead_ids"] = [l["id"] for l in storage.list_leads() if l.get("etapa") == campaign["filtro_etapa"]]
     campaign["id"] = storage._novo_id()
     campaign.update({"status": "rascunho", "total": len(campaign["lead_ids"]), "enviadas": 0, "erros": 0, "eventos": [], "criado_em": storage.now_iso()})
+    storage.upsert_campaign(campaign)
+    return campaign
+
+
+@app.put("/api/campaigns/{campaign_id}/status")
+def alterar_status_campanha(campaign_id: str, dados: dict):
+    """Altera o status de uma campanha (rascunho/ativa/pausada/concluida)."""
+    status = (dados.get("status") or "").strip().lower()
+    # Aliases aceitos: "ativa" equivale a "em_andamento" no ciclo interno.
+    aliases = {"ativa": "em_andamento", "em_andamento": "em_andamento", "pausada": "pausada", "pausado": "pausada", "rascunho": "rascunho", "concluida": "concluida"}
+    interno = aliases.get(status)
+    if not interno:
+        raise HTTPException(400, 'Status inválido. Use: rascunho, ativa, pausada ou concluida.')
+    campaign = storage.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campanha não encontrada.")
+    campaign["status"] = interno
     storage.upsert_campaign(campaign)
     return campaign
 

@@ -37,6 +37,44 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.16] — 2026-11-09
+
+### Adicionado
+
+- **Módulo de Disparos (Campanhas) revisado conforme especificação:**
+  - Rota `PUT /api/campaigns/{id}/status` — altera status
+    (`rascunho`/`ativa`/`pausada`/`concluida`; `ativa` normalize para
+    `em_andamento`; status inválido → 400, campanha inexistente → 404).
+  - `POST /api/campaigns` agora aceita **`filtro_etapa`**: sem `lead_ids`
+    explícitos, seleciona automaticamente os leads da etapa do CRM escolhida
+    (ex.: "Novos Leads"), e **`mensagem`** (texto do template) — usada pelo
+    agente de disparo quando presente.
+  - Página `frontend/src/pages/Disparos.tsx` reformulada em **tabela**
+    (Nome · Status · Total de Leads · Data de Criação · Ações), botão
+    **"Nova Campanha"** grande no topo (Fitts + von Restorff) e modal com nome,
+    **template da mensagem** (textarea), canal e **dropdown de filtro por etapa
+    do CRM**. Ações na tabela: **Iniciar** (gradiente), **Pausar** e **Parar**.
+  - UX: badges de status vibrantes (verde "Ativa", amarelo "Pausada", cinza
+    "Rascunho" — von Restorff) e **barra de progresso + spinner** para
+    campanhas ativas (Zeigarnik, com polling react-query a cada 4s).
+- **5 novos testes pytest** (`backend/tests/test_campaigns_routes.py`):
+  listagem, criação com filtro de etapa + persistência, payload inválido,
+  alteração de status (ativa/pausada) e erros (status inválido 400 /
+  inexistente 404).
+
+### Corrigido
+
+- **Launcher — kill switch (6ª regra inviolável):** o launcher NUNCA mais
+  ignora uma porta ocupada por instância anterior do LeadMaster — antes de
+  subir, encerra a instância antiga confirmada (PID dono da porta via
+  `netstat -ano` no Windows / `lsof -ti:porta -sTCP:LISTEN` no Unix, com
+  fallback `ps`), `taskkill /F /T /PID` ou `kill -9`, aguardando até 5s a
+  liberação. A mensagem "já está rodando" foi **removida** (impedia
+  atualizações e causava `EBUSY` no npx). Processos de outros projetos nunca
+  são tocados (avança para a próxima porta). Roda no `install` (libera
+  arquivos) e no `start`. Gate de regressão reforçado com as asserções do
+  kill switch.
+
 ## [0.1.15] — 2026-11-08
 
 ### Corrigido

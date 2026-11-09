@@ -29,7 +29,7 @@ const ROTULOS: Record<string, string> = {
   proposta: 'Proposta',
   fechado: 'Fechado',
   rascunho: 'Rascunho',
-  em_andamento: 'Em andamento',
+  em_andamento: 'Ativa',
   pausado: 'Pausado',
   pausada: 'Pausada',
   concluido: 'Concluído',

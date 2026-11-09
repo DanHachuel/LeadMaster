@@ -152,7 +152,10 @@ def _executar_campanha(campaign_id: str) -> None:
             storage.upsert_campaign(campaign)
             continue
 
-        mensagem = render_template(templates.get(campaign.get("canal", "texto"), templates.get("texto", "")), lead)
+        mensagem = render_template(
+            campaign.get("mensagem") or templates.get(campaign.get("canal", "texto"), templates.get("texto", "")),
+            lead,
+        )
         try:
             r = httpx.post(
                 f"{base}/{send_path}",

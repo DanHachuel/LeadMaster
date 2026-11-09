@@ -3,23 +3,38 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { Campanha, Lead } from '../lib/types';
 import { ETAPAS, ETAPA_LABEL } from '../lib/types';
-import { Accordion } from '../components/Accordion';
 import { Modal } from '../components/Modal';
 import { ProgressBar } from '../components/ProgressBar';
 import { StatusBadge } from '../components/StatusBadge';
 import { useToast } from '../components/Toast';
 import { cn, dataHora } from '../lib/format';
 
+/**
+ * Disparos (campanhas): tabela com Nome/Status/Total de Leads/Data de Criação,
+ * botão "Nova Campanha" em gradiente (Fitts + von Restorff), badges vibrantes
+ * de status (von Restorff) e barra de progresso nas campanhas ativas (Zeigarnik).
+ */
 export function Disparos() {
   const { toast } = useToast();
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [templates, setTemplates] = useState<Record<string, string>>({});
   const [modalAberto, setModalAberto] = useState(false);
   const [detalhes, setDetalhes] = useState<Campanha | null>(null);
 
-  // Polling gerenciado pelo TanStack Query: enquanto houver campanha em
-  // andamento sonda a cada 4s (Efeito Zeigarnik); caso contrário, sem polling.
-  // Cleanup e pausa em aba oculta são automáticos.
+  const [nome, setNome] = useState('');
+  const [template, setTemplate] = useState('');
+  const [canal, setCanal] = useState<'texto' | 'audio'>('texto');
+  const [filtroEtapa, setFiltroEtapa] = useState<string>('leads');
+
+  const carregarLeads = useCallback(async () => {
+    setLeads(await api.leads.listar());
+  }, []);
+
+  useEffect(() => {
+    carregarLeads().catch((e) => toast('erro', e.message));
+  }, [carregarLeads, toast]);
+
+  // Polling gerenciado pelo TanStack Query (0.1.02): sonda a cada 4s enquanto
+  // existir campanha ativa; cleanup e pausa em aba oculta automáticos.
   const { data: campanhas = [], refetch: recarregarCampanhas } = useQuery<Campanha[]>({
     queryKey: ['campanhas'],
     queryFn: () => api.campanhas.listar(),
@@ -28,337 +43,259 @@ export function Disparos() {
     refetchIntervalInBackground: false,
   });
 
-  const carregarBase = useCallback(async () => {
-    const [ls, ts] = await Promise.all([api.leads.listar(), api.agentes.templates()]);
-    setLeads(ls);
-    setTemplates(ts);
-  }, []);
-
-  useEffect(() => {
-    carregarBase().catch((e) => toast('erro', e.message));
-  }, [carregarBase, toast]);
-
-  // Formulário da nova campanha
-  const [nome, setNome] = useState('');
-  const [canal, setCanal] = useState<'texto' | 'audio'>('texto');
-  const [template, setTemplate] = useState('texto');
-  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
-  const [etapaFiltro, setEtapaFiltro] = useState<string>('todas');
-
-  const leadsFiltrados = useMemo(
-    () => (etapaFiltro === 'todas' ? leads : leads.filter((l) => l.etapa === etapaFiltro)),
-    [leads, etapaFiltro],
+  const totalPorEtapa = useMemo(
+    () => Object.fromEntries(ETAPAS.map((e) => [e, leads.filter((l) => l.etapa === e).length])) as Record<string, number>,
+    [leads],
   );
 
-  const alternar = (id: string) => {
-    setSelecionados((atual) => {
-      const novo = new Set(atual);
-      if (novo.has(id)) novo.delete(id);
-      else novo.add(id);
-      return novo;
-    });
-  };
-
-  const selecionarEtapa = () => {
-    setSelecionados(new Set(leadsFiltrados.map((l) => l.id)));
-  };
-
-  const criarCampanha = async () => {
+  const criar = async () => {
     if (!nome.trim()) {
       toast('erro', 'Dê um nome para a campanha.');
       return;
     }
-    if (selecionados.size === 0) {
-      toast('erro', 'Selecione ao menos um lead para disparar.');
+    if (!template.trim()) {
+      toast('erro', 'Escreva o template da mensagem.');
       return;
     }
     try {
-      await api.campanhas.criar({ nome: nome.trim(), canal, template, lead_ids: [...selecionados] });
-      toast('sucesso', 'Campanha criada — clique em Iniciar quando estiver pronto.');
+      await api.campanhas.criar({
+        nome: nome.trim(),
+        canal,
+        template: canal,
+        mensagem: template.trim(),
+        lead_ids: [],
+        filtro_etapa: filtroEtapa,
+      });
+      const rotuloEtapa = ETAPA_LABEL[filtroEtapa as keyof typeof ETAPA_LABEL] ?? filtroEtapa;
+      toast('sucesso', `Campanha criada — ${totalPorEtapa[filtroEtapa] ?? 0} leads de "${rotuloEtapa}" serão disparados.`);
       setModalAberto(false);
       setNome('');
-      setSelecionados(new Set());
+      setTemplate('');
       await recarregarCampanhas();
+      await carregarLeads();
     } catch (e) {
       toast('erro', e instanceof Error ? e.message : 'Falha ao criar campanha.');
     }
   };
 
-  const agir = async (campanha: Campanha, acao: 'iniciar' | 'pausar' | 'parar') => {
+  const alterarStatus = async (campanha: Campanha, status: 'ativa' | 'pausada' | 'rascunho') => {
     try {
-      const r =
-        acao === 'iniciar'
-          ? await api.campanhas.iniciar(campanha.id)
-          : acao === 'pausar'
-            ? await api.campanhas.pausar(campanha.id)
-            : await api.campanhas.parar(campanha.id);
-      toast(r.ok ? 'sucesso' : 'info', r.mensagem);
+      await api.campanhas.status(campanha.id, status);
+      toast('sucesso', `Campanha "${campanha.nome}" → ${status === 'ativa' ? 'Ativa' : status === 'pausada' ? 'Pausada' : 'Rascunho'}.`);
       await recarregarCampanhas();
     } catch (e) {
-      toast('erro', e instanceof Error ? e.message : 'Falha na ação.');
-    }
-  };
-
-  const excluir = async (campanha: Campanha) => {
-    try {
-      await api.campanhas.remover(campanha.id);
-      toast('sucesso', `Campanha "${campanha.nome}" removida.`);
-      await recarregarCampanhas();
-    } catch (e) {
-      toast('erro', e instanceof Error ? e.message : 'Falha ao remover.');
+      toast('erro', e instanceof Error ? e.message : 'Falha ao alterar status.');
     }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <p className="text-sm text-gray-500">
-          <strong className="text-gray-800">{campanhas.length}</strong> campanhas • templates configuráveis em Agentes
+          <strong className="text-gray-800">{campanhas.length}</strong> campanhas · templates em Agentes
         </p>
+        {/* Botão primário (Fitts + von Restorff) */}
         <button
           onClick={() => setModalAberto(true)}
-          className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90 transition shadow-sm"
+          className="px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90 transition shadow-sm"
         >
           <i className="fas fa-plus mr-2" /> Nova Campanha
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {campanhas.map((campanha) => {
-          const total = Math.max(campanha.total, campanha.enviadas + campanha.erros);
-          const pct = total ? Math.round(((campanha.enviadas + campanha.erros) / total) * 100) : 0;
-          const rodando = campanha.status === 'em_andamento';
-          return (
-            <div key={campanha.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 truncate">{campanha.nome}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    criada em {dataHora(campanha.criado_em)} · template "{campanha.template}"
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <StatusBadge status={canalRotulo(campanha.canal)} rotulo={campanha.canal === 'audio' ? 'Áudio' : 'Texto'} />
-                  <StatusBadge status={campanha.status} />
-                </div>
-              </div>
-
-              {/* Zeigarnik: progresso visível */}
-              <ProgressBar valor={pct} mostrarLabel />
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>
-                  <i className="fas fa-paper-plane text-blue-500 mr-1" />
-                  {campanha.enviadas} enviadas
-                </span>
-                <span>
-                  <i className="fas fa-circle-exclamation text-red-500 mr-1" />
-                  {campanha.erros} erros
-                </span>
-                <span>{total} leads</span>
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <button
-                  onClick={() => setDetalhes(campanha)}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                >
-                  <i className="fas fa-list mr-1" /> Ver eventos
-                </button>
-                <div className="flex items-center gap-2">
-                  {(campanha.status === 'rascunho' || campanha.status === 'pausada' || campanha.status === 'concluida') && (
-                    <button
-                      onClick={() => agir(campanha, 'iniciar')}
-                      className="px-4 py-2 text-xs font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90"
-                    >
-                      <i className="fas fa-play mr-1" /> {campanha.status === 'pausada' ? 'Retomar' : 'Iniciar'}
-                    </button>
-                  )}
-                  {rodando && (
-                    <>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 uppercase border-b border-gray-100 bg-gray-50/50">
+                <th className="px-5 py-3 font-semibold">Nome</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 font-semibold">Total de Leads</th>
+                <th className="px-5 py-3 font-semibold">Data de Criação</th>
+                <th className="px-5 py-3 font-semibold text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {campanhas.map((campanha) => {
+                const ativa = campanha.status === 'em_andamento';
+                const total = Math.max(campanha.total, campanha.enviadas + campanha.erros);
+                return (
+                  <tr key={campanha.id} className="border-b border-gray-50 hover:bg-indigo-50/40">
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-gray-800 truncate max-w-[220px]">{campanha.nome}</p>
+                      <p className="text-xs text-gray-400">
+                        {campanha.canal === 'audio' ? 'Áudio' : 'Texto'} · template "{campanha.template}"
+                      </p>
+                    </td>
+                    <td className="px-5 py-3">
+                      <StatusBadge status={campanha.status} />
+                    </td>
+                    <td className="px-5 py-3 text-gray-600">{total}</td>
+                    <td className="px-5 py-3 text-xs text-gray-400">{dataHora(campanha.criado_em)}</td>
+                    <td className="px-5 py-3 text-right whitespace-nowrap">
                       <button
-                        onClick={() => agir(campanha, 'pausar')}
-                        className="px-4 py-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100"
+                        onClick={() => setDetalhes(campanha)}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3"
                       >
-                        <i className="fas fa-pause mr-1" /> Pausar
+                        <i className="fas fa-list mr-1" /> Ver
                       </button>
-                      <button
-                        onClick={() => agir(campanha, 'parar')}
-                        className="px-4 py-2 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
-                      >
-                        <i className="fas fa-stop mr-1" /> Parar
-                      </button>
-                    </>
-                  )}
-                  <button
-                    onClick={() => excluir(campanha)}
-                    className="text-gray-400 hover:text-red-600 px-2 py-2"
-                    title="Excluir campanha"
-                  >
-                    <i className="fas fa-trash" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {campanhas.length === 0 && (
-          <div className="lg:col-span-2 bg-white rounded-xl border border-dashed border-gray-200 py-16 text-center text-gray-400">
-            <i className="fas fa-bullhorn text-3xl text-gray-200 block mb-3" />
-            Nenhuma campanha ainda. Crie a primeira com "Nova Campanha".
-          </div>
-        )}
+                      {ativa ? (
+                        <>
+                          <button
+                            onClick={() => alterarStatus(campanha, 'pausada')}
+                            className="px-4 py-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 mr-2"
+                          >
+                            <i className="fas fa-pause mr-1" /> Pausar
+                          </button>
+                          <button
+                            onClick={() => alterarStatus(campanha, 'rascunho')}
+                            className="px-4 py-2 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
+                          >
+                            <i className="fas fa-stop mr-1" /> Parar
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => alterarStatus(campanha, 'ativa')}
+                          className="px-5 py-2 text-xs font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90"
+                        >
+                          <i className="fas fa-play mr-1" /> Iniciar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {campanhas.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-5 py-16 text-center text-gray-400">
+                    <i className="fas fa-bullhorn text-3xl text-gray-200 block mb-3" />
+                    Nenhuma campanha ainda. Clique em <strong className="text-indigo-500">Nova Campanha</strong> para começar.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
+      {/* Zeigarnik: campanha ativa mostra barra de progresso + spinner */}
+      {campanhas.filter((c) => c.status === 'em_andamento').length > 0 && (
+        <div className="space-y-3">
+          {campanhas
+            .filter((c) => c.status === 'em_andamento')
+            .map((campanha) => {
+              const total = Math.max(campanha.total, campanha.enviadas + campanha.erros);
+              const pct = total ? Math.round(((campanha.enviadas + campanha.erros) / total) * 100) : 0;
+              return (
+                <div key={campanha.id} className="bg-white rounded-xl shadow-sm border border-indigo-100 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <i className="fas fa-spinner fa-spin text-indigo-500" /> {campanha.nome}
+                    </p>
+                    <span className="text-xs text-gray-500">
+                      {campanha.enviadas} enviadas · {campanha.erros} erros
+                    </span>
+                  </div>
+                  <ProgressBar valor={pct} mostrarLabel />
+                </div>
+              );
+            })}
+        </div>
+      )}
+
       {/* Modal: nova campanha */}
-      <Modal aberto={modalAberto} onFechar={() => setModalAberto(false)} titulo="Nova campanha de disparo" icone="fas fa-bullhorn" largura="lg">
+      <Modal aberto={modalAberto} onFechar={() => setModalAberto(false)} titulo="Nova Campanha" icone="fas fa-bullhorn" largura="lg">
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-3">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Nome da campanha *</label>
-              <input
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                placeholder="Ex.: Reativação de leads de novembro"
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Nome da Campanha *</label>
+            <input
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder="Ex.: Reativação de novos leads"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Template da Mensagem *</label>
+            <textarea
+              value={template}
+              onChange={(e) => setTemplate(e.target.value)}
+              rows={4}
+              placeholder={'Use variáveis: {{nome}}, {{primeiro_nome}}, {{empresa}}, {{cidade}}...'}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none font-mono"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Variáveis: <code className="bg-gray-100 px-1 rounded">{'{{nome}}'}</code>,{' '}
+              <code className="bg-gray-100 px-1 rounded">{'{{primeiro_nome}}'}</code>,{' '}
+              <code className="bg-gray-100 px-1 rounded">{'{{empresa}}'}</code>,{' '}
+              <code className="bg-gray-100 px-1 rounded">{'{{cidade}}'}</code>
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Canal</label>
               <select
                 value={canal}
-                onChange={(e) => {
-                  const valor = e.target.value as 'texto' | 'audio';
-                  setCanal(valor);
-                  setTemplate(valor);
-                }}
+                onChange={(e) => setCanal(e.target.value as 'texto' | 'audio')}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
               >
                 <option value="texto">Texto</option>
                 <option value="audio">Áudio</option>
               </select>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Template</label>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Filtrar Leads por Etapa do CRM</label>
               <select
-                value={template}
-                onChange={(e) => setTemplate(e.target.value)}
+                value={filtroEtapa}
+                onChange={(e) => setFiltroEtapa(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
               >
-                {Object.keys(templates).map((chave) => (
-                  <option key={chave} value={chave}>
-                    {chave === 'texto' ? 'Texto' : 'Áudio'} — {templates[chave].slice(0, 40)}...
+                {ETAPAS.map((etapa) => (
+                  <option key={etapa} value={etapa}>
+                    {ETAPA_LABEL[etapa]} ({totalPorEtapa[etapa] ?? 0} leads)
                   </option>
                 ))}
               </select>
             </div>
           </div>
-
-          {/* Seleção de leads com alvos grandes (Lei de Fitts) */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium text-gray-500">
-                Leads destinatários — {selecionados.size} selecionado(s)
-              </label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={etapaFiltro}
-                  onChange={(e) => setEtapaFiltro(e.target.value)}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white"
-                >
-                  <option value="todas">Todas as etapas</option>
-                  {ETAPAS.map((etapa) => (
-                    <option key={etapa} value={etapa}>
-                      {ETAPA_LABEL[etapa]}
-                    </option>
-                  ))}
-                </select>
-                <button onClick={selecionarEtapa} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
-                  Selecionar todos
-                </button>
-              </div>
-            </div>
-            <div className="max-h-52 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-50">
-              {leadsFiltrados.map((lead) => (
-                <label
-                  key={lead.id}
-                  className="flex items-center gap-3 px-3 py-2.5 text-sm cursor-pointer hover:bg-indigo-50/50"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selecionados.has(lead.id)}
-                    onChange={() => alternar(lead.id)}
-                    className="w-4 h-4 accent-indigo-500"
-                  />
-                  <span className="text-gray-700 flex-1 truncate">{lead.nome}</span>
-                  <span className="text-xs text-gray-400">{lead.telefone || lead.email || 'sem contato'}</span>
-                </label>
-              ))}
-              {leadsFiltrados.length === 0 && (
-                <p className="px-3 py-6 text-center text-xs text-gray-400">Nenhum lead nesta etapa.</p>
-              )}
-            </div>
-          </div>
-
-          <Accordion titulo="Como funciona o disparo?" icone="fas fa-circle-question">
-            <p className="text-xs text-gray-500">
-              O disparo é executado pelo <strong>OpenOutreach</strong> (eracle/OpenOutreach). Se ainda não
-              configurou, a validação acontece na hora de iniciar — configure em <strong>Ferramentas → OpenOutreach</strong>.
-            </p>
-          </Accordion>
-
+          <p className="text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+            <i className="fas fa-circle-info mr-1" /> O envio simulado altera o status no JSON. A integração real
+            (OpenOutreach) é validada na hora de iniciar — configure em Ferramentas.
+          </p>
           <div className="flex justify-end gap-3 pt-1">
-            <button
-              onClick={() => setModalAberto(false)}
-              className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
-            >
+            <button onClick={() => setModalAberto(false)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
               Cancelar
             </button>
-            <button
-              onClick={criarCampanha}
-              className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90"
-            >
-              <i className="fas fa-plus mr-2" /> Criar campanha
+            <button onClick={criar} className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:opacity-90">
+              <i className="fas fa-plus mr-2" /> Criar Campanha
             </button>
           </div>
         </div>
       </Modal>
 
-      {/* Modal: eventos da campanha */}
+      {/* Modal: detalhes da campanha */}
       <Modal aberto={!!detalhes} onFechar={() => setDetalhes(null)} titulo={`Eventos — ${detalhes?.nome ?? ''}`} icone="fas fa-list" largura="lg">
         {detalhes && (
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {detalhes.eventos.length === 0 && (
               <p className="text-sm text-gray-400 text-center py-8">
-                Nenhum evento ainda — inicie a campanha para gerar disparos.
+                Nenhum evento ainda — a execução do disparo é simulada nesta fase.
               </p>
             )}
-            {detalhes.eventos
-              .slice()
-              .reverse()
-              .map((evento, i) => (
-                <div key={i} className="flex items-start gap-3 text-sm border-b border-gray-50 pb-2">
-                  <i
-                    className={cn(
-                      'mt-1 text-xs',
-                      evento.status === 'enviado' ? 'fas fa-circle-check text-green-500' : 'fas fa-circle-xmark text-red-500',
-                    )}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-gray-700 truncate">
-                      {leads.find((l) => l.id === evento.lead_id)?.nome ?? evento.lead_id}
-                    </p>
-                    {evento.mensagem && <p className="text-xs text-gray-400 truncate">{evento.mensagem}</p>}
-                  </div>
-                  <span className="text-xs text-gray-300 shrink-0">{dataHora(evento.momento)}</span>
+            {detalhes.eventos.slice().reverse().map((evento, i) => (
+              <div key={i} className="flex items-start gap-3 text-sm border-b border-gray-50 pb-2">
+                <i className={cn('mt-1 text-xs', evento.status === 'enviado' ? 'fas fa-circle-check text-green-500' : 'fas fa-circle-xmark text-red-500')} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-gray-700 truncate">{leads.find((l) => l.id === evento.lead_id)?.nome ?? evento.lead_id}</p>
+                  {evento.mensagem && <p className="text-xs text-gray-400 truncate">{evento.mensagem}</p>}
                 </div>
-              ))}
+                <span className="text-xs text-gray-300 shrink-0">{dataHora(evento.momento)}</span>
+              </div>
+            ))}
           </div>
         )}
       </Modal>
     </div>
   );
-}
-
-function canalRotulo(canal: string): string {
-  return canal === 'audio' ? 'audio' : 'texto';
 }

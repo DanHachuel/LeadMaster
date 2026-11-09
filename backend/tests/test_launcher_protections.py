@@ -66,6 +66,18 @@ class TestLauncherProtections:
         assert "detached: true" in c
         assert "windowsHide: true" in c
 
+    def test_kill_switch_presente(self):
+        c = _conteudo()
+        assert "encerrarInstanciaAnterior" in c
+        assert "netstat" in c  # descoberta do PID no Windows
+        assert "lsof" in c  # descoberta do PID no Linux/macOS
+        assert "taskkill" in c and "/F" in c  # kill switch Windows
+
+    def test_nunca_avisa_ja_esta_rodando(self):
+        # Mensagem proibida: impede atualizações e deixa a versão antiga no ar.
+        assert "já está rodando" not in _conteudo().lower()
+        assert "ja esta rodando" not in _conteudo().lower()
+
     def test_sigterm_nao_absorvido(self):
         # SIGTERM/SIGBREAK são paradas legítimas: sempre encerram.
         c = _conteudo()

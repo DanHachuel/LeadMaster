@@ -85,8 +85,10 @@ export const api = {
   // Campanhas / Disparos
   campanhas: {
     listar: () => req<Campanha[]>('/campaigns'),
-    criar: (dados: { nome: string; canal: string; template: string; lead_ids: string[] }) =>
+    criar: (dados: { nome: string; canal: string; template: string; mensagem?: string; lead_ids: string[]; filtro_etapa?: string | null }) =>
       req<Campanha>('/campaigns', corpo(dados)),
+    status: (id: string, status: 'ativa' | 'pausada' | 'rascunho') =>
+      req<Campanha>(`/campaigns/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
     iniciar: (id: string) => req<{ ok: boolean; mensagem: string }>(`/campaigns/${id}/start`, corpo({})),
     pausar: (id: string) => req<{ ok: boolean; mensagem: string }>(`/campaigns/${id}/pause`, corpo({})),
     parar: (id: string) => req<{ ok: boolean; mensagem: string }>(`/campaigns/${id}/stop`, corpo({})),
