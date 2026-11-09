@@ -10,7 +10,20 @@ interface Props {
 /** Gráfico de barras horizontais — Leads por etapa do CRM (fiel ao protótipo). */
 export function LeadsStageChart({ porEtapa }: Props) {
   const dados = ETAPAS.map((e) => porEtapa[e] ?? 0);
+  const total = dados.reduce((soma, valor) => soma + valor, 0);
   const maximo = Math.max(20, Math.ceil((Math.max(...dados) + 1) / 20) * 20);
+
+  // Zero state (Zeigarnik): sem leads, mensagem amigável em vez de gráfico vazio.
+  if (total === 0) {
+    return (
+      <div className="mt-4 h-64 flex flex-col items-center justify-center text-center gap-2 border-2 border-dashed border-gray-100 rounded-lg px-4">
+        <i className="fas fa-inbox text-2xl text-gray-300" />
+        <p className="text-sm text-gray-400">Nenhum dado ainda. Comece extraindo leads!</p>
+        <p className="text-xs text-gray-300">Use os extratores (Maps, Instagram ou CNPJ) para popular o CRM.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 h-64">
       <Bar

@@ -37,6 +37,37 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.18] — 2026-11-09
+
+### Adicionado
+
+- **Zero states no Painel (Efeito Zeigarnik)** — com base vazia a tela não
+  mostra mais gráficos em branco:
+  - `LeadsStageChart`: **"Nenhum dado ainda. Comece extraindo leads!"** com
+    orientação aos extratores (Maps/Instagram/CNPJ);
+  - `CampaignsDoughnut`: **"Nenhuma campanha disparada ainda."** com orientação
+    a Disparos;
+  - ambos em bloco tracejado discreto, sem quebrar o layout (altura preservada).
+- **Testes das métricas (`backend/tests/test_metrics.py`)** — 4 novos testes da
+  rota `GET /api/metrics` com dados conhecidos em `LEADMASTER_HOME` temporário
+  (seeds de demo neutralizados):
+  - base vazia: totais zerados e taxas padrão (100% entrega / 0% erro);
+  - leads conhecidos: `leads_total` e `leads_por_etapa` exatos por coluna;
+  - consolidação de campanhas: enviadas/erros somados e taxas proporcionais
+    (150/162 → 92,6% e 7,4%);
+  - reflexo do Kanban: mover lead de coluna via `PUT /api/crm/leads/{id}/etapa`
+    recalcula `leads_por_etapa` na hora.
+  - Suíte completa: **44 passed**.
+
+### Auditoria
+
+- **`GET /api/metrics` (dinâmica):** auditada contra a especificação — já lê
+  `leads.json`/`campaigns.json` em tempo real e devolve `leads_total`,
+  `leads_por_etapa` (leads/em_contato/proposta/fechado), totais consolidados
+  das campanhas, `taxa_entrega`/`taxa_erro` (fallback 100%/0% sem campanhas) e
+  `conexao` (geral/llm/openoutreach). Nenhuma alteração de cálculo necessária —
+  agora com cobertura de testes e zero states na UI.
+
 ## [0.1.17] — 2026-11-09
 
 ### Corrigido
