@@ -151,9 +151,10 @@ export const api = {
 
   // Webhook
   webhook: {
-    obter: () => req<{ url: string; eventos: string[] }>('/webhook'),
+    obter: () => req<{ url: string; eventos: string[]; ultimo_teste: string | null }>('/webhook'),
     salvar: (patch: { url?: string; eventos?: string[] }) =>
-      req<{ url: string; eventos: string[] }>('/webhook', { method: 'PUT', body: JSON.stringify(patch) }),
-    testar: (url: string) => req<{ ok: boolean; status_http?: number; resposta?: string; mensagem?: string }>('/webhook/test', corpo({ url })),
+      req<{ url: string; eventos: string[]; ultimo_teste: string | null }>('/webhook', { method: 'PUT', body: JSON.stringify(patch) }),
+    testar: (url: string) =>
+      req<{ ok: boolean; status_http?: number; resposta?: string; mensagem?: string; ultimo_teste?: string }>('/webhook/test', corpo({ url })),
   },
 };

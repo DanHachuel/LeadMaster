@@ -712,21 +712,47 @@ def atendimento_chat(dados: ChatIn):
 
 @app.get("/api/webhook")
 def obter_webhook():
-    return storage.get_config().get("webhook", {})
+    webhook = storage.get_config().get("webhook", {})
+    return {
+        "url": webhook.get("url", ""),
+        "eventos": webhook.get("eventos", []),
+        "ultimo_teste": webhook.get("ultimo_teste"),
+    }
+
+
+def _url_valida(url: str) -> bool:
+    return isinstance(url, str) and (url.startswith("http://") or url.startswith("https://"))
 
 
 @app.put("/api/webhook")
 def salvar_webhook(patch: dict):
     config = storage.get_config()
     webhook = config.get("webhook", {})
+    url = patch.get("url", webhook.get("url", ""))
+    if url and not _url_valida(url):
+        raise HTTPException(400, "URL inválida: deve começar com http:// ou https://.")
     webhook.update({k: v for k, v in patch.items() if k in ("url", "eventos")})
     storage.update_config({"webhook": webhook})
-    return webhook
+    return {
+        "url": webhook.get("url", ""),
+        "eventos": webhook.get("eventos", []),
+        "ultimo_teste": webhook.get("ultimo_teste"),
+    }
 
 
 @app.post("/api/webhook/test")
 def testar_webhook(dados: WebhookTestIn):
-    return agents.testar_webhook(dados.url)
+    if dados.url and not _url_valida(dados.url):
+        raise HTTPException(400, "URL inválida: deve começar com http:// ou https://.")
+    resultado = agents.testar_webhook(dados.url)
+    if resultado.get("ok"):
+        # Registra o último teste bem-sucedido no config.json.
+        config = storage.get_config()
+        webhook = config.get("webhook", {})
+        webhook["ultimo_teste"] = storage.now_iso()
+        storage.update_config({"webhook": webhook})
+        resultado["ultimo_teste"] = webhook["ultimo_teste"]
+    return resultado
 
 
 # ---------------------------------------------------------------------------

@@ -37,6 +37,29 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.21] — 2026-11-09
+
+### Adicionado
+
+- **Módulo de Webhooks revisado conforme especificação:**
+  - `GET /api/webhook` agora retorna também **`ultimo_teste`** (registrado a cada
+    teste bem-sucedido no `config.json`).
+  - `PUT /api/webhook` e `POST /api/webhook/test` **validam a URL**: só
+    `http://`/`https://` são aceitos (400 com mensagem acionável).
+  - Novo evento **`campanha.iniciada`** — disparado quando uma campanha começa a
+    rodar; migração aditiva garante que ele apareça nas configurações existentes.
+  - Frontend `frontend/src/pages/Webhook.tsx` reformulado: eventos exibidos
+    diretamente e limpos (**Lead Criado**, **Campanha Iniciada**, **Campanha
+    Finalizada** — Lei de Hick), **prevenção de erros** (Nielsen): URL fora do
+    padrão http(s) bloqueia o salvamento e marca o input com **borda vermelha**,
+    botão **"Salvar Configurações"** em gradiente (Fitts) e **"Testar Webhook"**
+    em outline contrastante (von Restorff), toast de sucesso/erro no teste e card
+    **"Último teste realizado em: [data/hora]"**.
+- **7 novos testes pytest** (`backend/tests/test_webhook_routes.py`): leitura do
+  padrão, salvamento de URL/eventos com persistência, URL inválida (400), teste
+  com sucesso (mock do `httpx.post`, registra `ultimo_teste`), teste com falha de
+  conexão sem quebrar (mock de `httpx.ConnectError`) e URL de teste inválida.
+
 ## [0.1.20] — 2026-11-09
 
 ### Adicionado

@@ -100,6 +100,7 @@ def iniciar_campanha(campaign_id: str) -> dict:
     campaign.setdefault("erros", 0)
     campaign.setdefault("eventos", [])
     storage.upsert_campaign(campaign)
+    disparar_webhook("campanha.iniciada", {"campanha_id": campaign_id, "nome": campaign["nome"]})
 
     threading.Thread(target=_executar_campanha, args=(campaign_id,), daemon=True).start()
     return {"ok": True, "mensagem": "Campanha iniciada."}

@@ -135,7 +135,7 @@ DEFAULT_CONFIG = {
     },
     "webhook": {
         "url": "",
-        "eventos": ["lead.criado", "lead.etapa", "campanha.concluida"],
+        "eventos": ["lead.criado", "campanha.iniciada", "campanha.concluida"],
     },
 }
 
@@ -189,11 +189,16 @@ def _limpar_deprecated(config: dict) -> dict:
                 mudou = True
     # Evento de webhook do recurso removido.
     webhook = config.get("webhook")
-    if isinstance(webhook, dict) and isinstance(webhook.get("eventos"), list):
-        eventos = [e for e in webhook["eventos"] if e != "video.publicado"]
-        if eventos != webhook["eventos"]:
-            webhook["eventos"] = eventos
-            mudou = True
+    if isinstance(webhook, dict):
+        if isinstance(webhook.get("eventos"), list):
+            eventos = [e for e in webhook["eventos"] if e != "video.publicado"]
+            # Migração aditiva: o evento "campanha.iniciada" passou a existir
+            # (0.1.21) — garantimos que configs antigas também o ofereçam.
+            if "campanha.iniciada" not in eventos:
+                eventos.append("campanha.iniciada")
+            if eventos != webhook["eventos"]:
+                webhook["eventos"] = eventos
+                mudou = True
     # Dados órfãos do pipeline de vídeos: o arquivo só existia para esse recurso.
     pipeline_path = storage_dir() / PIPELINE_FILE
     if pipeline_path.exists():
