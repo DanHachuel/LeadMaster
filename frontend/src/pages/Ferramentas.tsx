@@ -249,17 +249,31 @@ function CampoSecreto({
   configurado: boolean;
   onChange: (valor: string) => void;
 }) {
+  // von Restorff + prevenção de erros: alternar visibilidade da chave sem
+  // precisar apagar/redigitar — olho sempre visível ao lado do campo.
+  const [visivel, setVisivel] = useState(false);
   return (
     <div>
       <label className="block text-xs font-medium text-gray-500 mb-1">
         {rotulo} {configurado && <span className="text-green-600">• configurado</span>}
       </label>
-      <input
-        type="password"
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={configurado ? '•••••••• (deixe vazio para manter)' : 'cole a chave aqui'}
-        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
-      />
+      <div className="relative">
+        <input
+          type={visivel ? 'text' : 'password'}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={configurado ? '•••••••• (deixe vazio para manter)' : 'cole a chave aqui'}
+          className="w-full px-3 py-2 pr-10 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => setVisivel((v) => !v)}
+          title={visivel ? 'Ocultar chave' : 'Mostrar chave'}
+          aria-label={visivel ? 'Ocultar chave' : 'Mostrar chave'}
+          className="absolute inset-y-0 right-0 px-3 text-gray-400 hover:text-indigo-600 transition"
+        >
+          <i className={visivel ? 'fas fa-eye-slash' : 'fas fa-eye'} />
+        </button>
+      </div>
     </div>
   );
 }

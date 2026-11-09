@@ -558,13 +558,53 @@ def buscar_cnpj(dados: CnpjSearchIn):
 
 @app.get("/api/config")
 def obter_config():
+    """Configuração local (config.json) — segredos NUNCA são expostos (regra do
+    AGENTS.md): campo devolvido vazio + flag `<campo>_configurado`."""
+    return storage.redact_config(storage.get_config())
+
+
+def _validar_patch(patch: dict) -> None:
+    """Rejeita payload que quebraria a estrutura da config.
+
+    Seções que são objetos no padrão (llm, extratores, integracoes...) precisam
+    continuar objetos — um valor escalar no lugar corromperia o arquivo e a UI.
+    Nenhum campo é obrigatório: o app roda com os defaults e valida credenciais
+    apenas no momento da ação (regra do AGENTS.md — sem travas de pré-registo).
+    """
+    for chave, valor in patch.items():
+        padrao = storage.DEFAULT_CONFIG.get(chave)
+        if isinstance(padrao, dict) and not isinstance(valor, dict):
+            raise HTTPException(422, f"O campo '{chave}' deve ser um objeto com os subcampos.")
+
+
+def _aparar_textos(valor):
+    """Nielsen (prevenção de erros): trim automático em textos antes de salvar —
+    espaços acidentais no início/fim (copiar-e-colar de chaves) não quebram a
+    credencial nem disparam falsos "inválido" depois."""
+    if isinstance(valor, str):
+        return valor.strip()
+    if isinstance(valor, dict):
+        return {k: _aparar_textos(v) for k, v in valor.items()}
+    if isinstance(valor, list):
+        return [_aparar_textos(v) for v in valor]
+    return valor
+
+
+def _salvar_config(patch: dict):
+    _validar_patch(patch)
+    storage.update_config(_aparar_textos(patch))
     return storage.redact_config(storage.get_config())
 
 
 @app.put("/api/config")
+@app.post("/api/config")
 def salvar_config(patch: dict):
-    storage.update_config(patch)
-    return storage.redact_config(storage.get_config())
+    """Salva a configuração em config.json (merge profundo, atômico, sob lock).
+
+    POST e PUT são equivalentes (o frontend usa PUT). Segredos vazios mantêm o
+    valor atual; textos recebem trim automático. Devolve a config mascarada.
+    """
+    return _salvar_config(patch)
 
 
 @app.post("/api/config/test/llm")

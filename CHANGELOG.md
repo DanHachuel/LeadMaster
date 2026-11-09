@@ -37,6 +37,45 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.19] — 2026-11-09
+
+### Adicionado
+
+- **`POST /api/config`** — alias do `PUT /api/config` (frontend continua usando
+  PUT; clientes externos podem usar POST, como na especificação da tela de
+  Ferramentas).
+- **Prevenção de erros (Nielsen) — trim automático:** todo texto do payload de
+  configuração recebe `strip()` antes de gravar (recursivo, inclui arrays e
+  objetos aninhados) — espaço acidental em API Key ou URL não vira falha
+  misteriosa depois.
+- **Validação de payload (422):** seção que é objeto no padrão (`llm`,
+  `extratores`, `integracoes`, `agentes`, `webhook`, `perfil`) recebendo valor
+  escalar é rejeitada com mensagem acionável, em vez de corromper o
+  `config.json` e a UI.
+- **Ícone de olho no campo de API Key** (`CampoSecreto` em Ferramentas):
+  alterna visibilidade da chave (von Restorff) — conferir/colar sem apagar o
+  campo. Continua com placeholder mascarado e aviso "deixe vazio para manter".
+- **Testes (`backend/tests/test_config.py`)** — 7 novos testes de
+  `GET/POST/PUT /api/config`: estrutura padrão, segredos nunca expostos ( GET
+  devolve vazio + `_configurado` e o corpo cru não contém a chave),
+  persistência + trim, segredo vazio não apaga o atual, PUT funcional,
+  payload inválido → 422 e trim em arrays aninhados.
+  Suíte completa: **51 passed**.
+
+### Auditoria
+
+- **Tela de Ferramentas:** auditada contra a especificação — a página
+  (`frontend/src/pages/Ferramentas.tsx`, rota `/ferramentas` já no menu) já
+  cobria LLM (provedor/base URL/modelo/API Key), Extratores (Maps, igmapper,
+  templates em accordion, CNPJ/Scrapling), Perfil e o botão gradiente "Salvar
+  configurações" com toast. Gaps entregues acima: POST, trim, validação, olho.
+- **Integrações:** a seção cobre **OpenOutreach** (disparo) e **pipecat**
+  (atendimento por voz), que são as integrações do produto. **YouTube/Meta não
+  foram implementados** — o AGENTS.md (§1) é explícito: produção/upload de
+  vídeos **não faz parte** do LeadMaster (o storage já remove chaves desses
+  sistemas em migração). Se o pipeline de vídeos entrar no roadmap um dia, será
+  como novo módulo com decisão de produto registrada.
+
 ## [0.1.18] — 2026-11-09
 
 ### Adicionado
