@@ -149,6 +149,14 @@ export const api = {
       req<{ ok: boolean; resposta?: string; mensagem?: string }>('/agents/attendance/chat', corpo({ mensagens })),
   },
 
+  // Funil de Prospecção
+  funil: () =>
+    req<{
+      etapas: { nome: string; quantidade: number }[];
+      conversoes: { de: string; para: string; taxa: number | null; queda: number | null }[];
+      gargalo: string | null;
+    }>('/funnel'),
+
   // Webhook
   webhook: {
     obter: () => req<{ url: string; eventos: string[]; ultimo_teste: string | null }>('/webhook'),

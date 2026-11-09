@@ -37,6 +37,29 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.22] — 2026-11-09
+
+### Adicionado
+
+- **Funil de Prospecção (visão macro de conversão):**
+  - Rota `GET /api/funnel`: conta os leads por etapa do CRM (`Leads → Em
+    Contato → Proposta → Fechado`), calcula a taxa de conversão de cada
+    transição (`para/de × 100`, 1 decimal) e a queda percentual, e identifica
+    o **gargalo** — a etapa *origem* da maior queda (onde os leads param).
+    Resposta: `{etapas, conversoes, gargalo}`.
+  - Página `frontend/src/pages/Funil.tsx` (rota `/funil`, link **"Funil de
+    Prospecção"** no menu): **funil em CSS puro** com fatias de largura
+    decrescente (nome + quantidade por etapa), **cards de conversão** por
+    transição (verde ≥50%, âmbar ≥25%, vermelho abaixo), **alerta de gargalo**
+    em vermelho/laranja com "⚠️ Gargalo: muitos leads param em 'X'" e fatia
+    do gargalo destacada (von Restorff), zero filtros na tela (Lei de Hick) e
+    funil vazio com barra zerada + "Comece a prospectar para ver seu funil"
+    (Zeigarnik). Acesso aos dados via `api.funil()` no cliente padronizado.
+- **4 novos testes pytest** (`backend/tests/test_funnel_routes.py`):
+  conversões + gargalo com distribuição [10,5,2,1] (taxas 50/40/50 → gargalo
+    "Em Contato"), gargalo na primeira etapa, funil vazio (taxas `null`,
+    gargalo `null`) e funil sem gargalo (quedas zero).
+
 ## [0.1.21] — 2026-11-09
 
 ### Adicionado

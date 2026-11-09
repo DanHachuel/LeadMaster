@@ -603,6 +603,41 @@ def salvar_prompt_agente(agent_id: str, dados: dict):
 
 
 # ---------------------------------------------------------------------------
+# Funil de Prospecção (métricas de conversão do CRM)
+# ---------------------------------------------------------------------------
+
+ETAPAS_FUNIL = ["Leads", "Em Contato", "Proposta", "Fechado"]
+
+
+@app.get("/api/funnel")
+def funil_prospeccao():
+    """Métricas de conversão do funil, calculadas a partir do leads.json."""
+    leads = storage.list_leads()
+    quantidades = [
+        sum(1 for l in leads if l.get("etapa") == etapa)
+        for etapa in ("leads", "em_contato", "proposta", "fechado")
+    ]
+    etapas = [{"nome": nome, "quantidade": qtd} for nome, qtd in zip(ETAPAS_FUNIL, quantidades)]
+
+    conversoes = []
+    for i in range(len(ETAPAS_FUNIL) - 1):
+        de, para = ETAPAS_FUNIL[i], ETAPAS_FUNIL[i + 1]
+        if quantidades[i] > 0:
+            taxa = round(quantidades[i + 1] / quantidades[i] * 100, 1)
+            queda = round(100 - taxa, 1)
+        else:
+            taxa, queda = None, None
+        conversoes.append({"de": de, "para": para, "taxa": taxa, "queda": queda})
+
+    # Gargalo: etapa ORIGEM da maior queda entre etapas consecutivas — é onde os
+    # leads param (ex.: muitos entram em "Em Contato" e não seguem).
+    quedas = [c for c in conversoes if c["queda"] is not None and c["queda"] > 0]
+    gargalo = max(quedas, key=lambda c: c["queda"])["de"] if quedas else None
+
+    return {"etapas": etapas, "conversoes": conversoes, "gargalo": gargalo}
+
+
+# ---------------------------------------------------------------------------
 # Configuração e integrações
 # ---------------------------------------------------------------------------
 
