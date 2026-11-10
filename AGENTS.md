@@ -170,58 +170,56 @@ indigo/purple apenas na ação principal.
   - saída sempre direcionada a pipes/logs (`stdio` controlado) — nunca janelas
     interativas.
 
-## 🚨 REGRA INVIOLÁVEL: ARQUITETURA DO LAUNCHER (anti-travamento no MobaXterm)
+## 🚨 REGRA INVIOLÁVEL: ARQUITETURA DO LAUNCHER (launcher descartável — padrão PandaNews)
 
-O launcher (`scripts/cli.mjs`) NÃO pode ser alterado de forma a remover estas seis
-proteções — elas impedem o encerramento silencioso do LeadMaster no Windows:
+O launcher (`scripts/cli.mjs`) adota a arquitetura **"launcher descartável +
+servidor autônomo"**: o Node sobe o servidor, grava o lock e SAI; o servidor
+Python sobrevive ao terminal (prompt devolvido de propósito) e só é encerrado
+por comando explícito (`kill`) ou pelo kill switch do próximo `start`. NÃO
+pode ser alterado de forma a remover estas seis regras:
 
-1. **Dummy Server (keep-alive infalível):** o launcher DEVE criar, no fluxo do
-   `cmdStart` e logo após o spawn do worker Python, um servidor HTTP inativo
-   (`http.createServer(...)` + `keepAliveServer.listen(0, '127.0.0.1')`) — o
-   socket aberto no sistema operacional segura o event loop do Node mesmo que o
-   terminal feche o stdin (EOF no MobaXterm), que o wrapper do npx feche os
-   streams ou que timers falhem. A referência ao servidor DEVE permanecer em
-   memória. Como reforço, o fluxo principal termina em
-   `await new Promise(() => {})` (congelado para sempre).
-2. **Terminal preso:** a linha `process.stdin.resume();` DEVE
-   estar presente no `cli.mjs`, dentro do fluxo do `cmdStart` e **após** o spawn
-   bem-sucedido do worker Python (nunca no `install` nem em função morta) — camada
-   SECUNDÁRIA (a principal é o Dummy Server da regra 1). `setInterval` e o
-   `beforeExit` (que re-arma o timer se o loop esvaziar) completam as camadas, e
-   erros do stream de stdin são ignorados. O launcher NUNCA deve chamar
-   `process.exit(0)` após o sucesso da inicialização (sai naturalmente ou pelos
-   listeners do filho); chamadas de `process.exit` residem apenas em caminhos de
-   erro acionável, na parada legítima (`SIGTERM`/`SIGBREAK`) e no aviso
-   informativo "já está rodando". O worker Python nunca é criado com `.unref()`;
-   a morte do filho encerra o launcher (`child.on('close')`) e vice-versa
-   (`process.on('exit')`).
-3. **Absorção de sinais no Windows:** `SIGINT` e `SIGHUP` DEVEM ser absorvidos no
-   Windows (apenas log `"[LAUNCHER] Sinal absorvido..."`, sem `stop()`/`exit()`) — o
-   MobaXterm os envia de forma espúria (perda de foco, minimização). `SIGTERM` e
-   `SIGBREAK` **nunca** devem ser absorvidos (são paradas legítimas). No Linux/macOS,
-   SIGINT/SIGHUP mantêm o encerramento gracioso.
-4. **Guarda da consola:** a função `guardConsoleStream` NUNCA deve ser removida —
-   ignora `EPIPE` no evento `'error'` do stream e espelha a saída em
-   `storage/logs/launcher_console.log`.
-5. **Isolamento de processos:** o worker Python DEVE ser iniciado com
-   `detached: true` (equivale a `CREATE_NEW_PROCESS_GROUP` no Windows) mantendo
-   `windowsHide: true`.
-6. **Kill switch (nunca reutilizar instância):** o launcher NUNCA deve ignorar
-   uma porta ocupada. Se a porta estiver em uso por outra instância do
-   LeadMaster, ele DEVE matar o processo antigo (descoberta do PID via
-   `netstat -ano` no Windows / `lsof -ti:porta` no Linux/macOS, seguida de
-   `taskkill /F /T /PID` ou `kill -9`) para garantir que a versão nova assuma o
-   controle — com espera de 1–2s pela liberação da porta. A mensagem "já está
-   rodando" é **proibida**, pois impede atualizações e deixa a versão antiga
-   travando arquivos (erro `EBUSY` no `npx`). **Higiene continua valendo:** só
-   mata processos **confirmados** como LeadMaster (`/api/health` com o payload
-   próprio + PID dono da porta) — processos de outros projetos nunca são
-   tocados (o launcher avança para a próxima porta livre). O kill switch roda
-   tanto no `install` (libera arquivos antes de instalar) quanto no `start`.
+1. **Spawn destacado com stdio em arquivo:** o worker Python DEVE nascer com
+   `detached: true` (grupo de processos próprio, imune a Ctrl+C do terminal),
+   `windowsHide: true` (nunca janela de console) e **`stdio: ['ignore', logFd,
+   logFd]`** — saída em `<home>/storage/logs/backend.log`. É **PROIBIDO**
+   `pipe`/`inherit` no stdio do servidor: pipes no terminal são o canal que
+   derruba tudo quando a PTY do MobaXterm morre.
+2. **Launcher descartável — é PROIBIDO segurar o terminal:** logo após o spawn,
+   `child.unref()` (o event loop do Node não depende do filho). São
+   **proibidos** no código do launcher: `process.stdin.resume()`,
+   `setInterval` de keep-alive, `http.createServer` (dummy server),
+   `beforeExit`, `await new Promise(...)` e qualquer vínculo de morte
+   (`child.on('exit')`, `child.on('close')`, `process.on('exit')` matando o
+   filho). Após imprimir a mensagem de sucesso, o launcher chama
+   `process.exit(0)` — o prompt volta e o servidor continua no ar.
+3. **Lock file global:** o start DEVE gravar `<home>/leadmaster.pid`
+   (`{pid, porta, versao, iniciado_em}`) e o `kill` DEVE lê-lo. Lock ausente
+   ou corrompido nunca impede o arranque (best-effort).
+4. **Comando de encerramento explícito:** `kill` (alias `stop`) DEVE existir —
+   mata a árvore do PID do lock (`taskkill /F /T /PID` no Windows,
+   `kill -9` no Unix), roda a rede de segurança por porta, remove o lock e
+   imprime "Servidor encerrado com sucesso". A UI e a mensagem final do
+   `start` DEVEM ensinar o comando (`npx ... kill`).
+5. **Isolamento e higiene:** o worker nasce em grupo próprio com
+   `windowsHide: true`; o kill switch (iniciado no `install` e no `start`)
+   encerra instâncias anteriores do LeadMaster — descoberta por
+   `netstat -ano` (Windows) / `lsof -ti:porta` (Unix) seguida de
+   `taskkill /F /T /PID` ou `kill -9`, **somente** para processos confirmados
+   como LeadMaster (`/api/health` com payload próprio + PID dono da porta);
+   processos de outros projetos nunca são tocados (o launcher avança para a
+   próxima porta livre). A mensagem "já está rodando" é PROIBIDA.
+6. **Guarda da consola:** `guardConsoleStream` NUNCA deve ser removida —
+   ignora `EPIPE` no `'error'` dos streams e espelha a saída em
+   `storage/logs/launcher_console.log`. Durante a curtíssima vida do launcher,
+   `SIGINT`/`SIGHUP` espúrios do MobaXterm são absorvidos no Windows (apenas
+   log); `SIGTERM`/`SIGBREAK` encerram por código (matam o servidor recém-
+   criado e removem o lock).
 
-Gate de regressão: `backend/tests/test_launcher_protections.py` falha se qualquer uma
-dessas proteções desaparecer do launcher (inclusive `process.stdin.resume();`, o uso
-de `.unref()` ou a ausência do kill switch).
+Gate de regressão: `backend/tests/test_launcher_protections.py` falha se o
+`child.unref()`, o `stdio: ['ignore', logFd, logFd]`, o lock file, o comando
+`kill` ou a mensagem de background desaparecerem — e falha se qualquer
+keep-alive proibido (`stdin.resume`, `setInterval`, `http.createServer`,
+`await new Promise`) ou vínculo de morte voltar.
 
 ### Runtime permanente — terminantemente proibido executar do cache do npx
 

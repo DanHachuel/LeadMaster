@@ -23,7 +23,7 @@
  */
 
 import { spawn, spawnSync, execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, appendFileSync, rmSync, cpSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, appendFileSync, rmSync, cpSync, openSync, closeSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
@@ -330,6 +330,50 @@ async function procurarInstanciaAtiva(portaInicial, maxTentativas = 10) {
 }
 
 // ---------------------------------------------------------------------------
+// Lock file global (arquitetura "launcher descartável" — padrão PandaNews)
+//
+// O launcher Node morre depois de subir o servidor; o lock em
+// <home>/leadmaster.pid guarda o PID do backend e a porta para que os
+// comandos `kill`/`doctor` (e o kill switch do próximo start) encontrem o
+// servidor sem depender de varredura de portas. Lock corrompido ou ausente
+// NUNCA pode impedir o arranque — é best-effort.
+// ---------------------------------------------------------------------------
+
+const LOCK_FILE = 'leadmaster.pid';
+
+function lockPath(home) {
+  return path.join(home, LOCK_FILE);
+}
+
+function lerLock(home) {
+  try {
+    const dados = JSON.parse(readFileSync(lockPath(home), 'utf8'));
+    return typeof dados === 'object' && dados ? dados : null;
+  } catch {
+    return null;
+  }
+}
+
+function escreverLock(home, pid, porta) {
+  try {
+    writeFileSync(
+      lockPath(home),
+      JSON.stringify({ pid, porta, versao: VERSION, iniciado_em: new Date().toISOString() }, null, 2),
+    );
+  } catch {
+    /* lock é best-effort — falhar aqui não derruba o start */
+  }
+}
+
+function removerLock(home) {
+  try {
+    unlinkSync(lockPath(home));
+  } catch {
+    /* já removido ou ausente */
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Kill switch (regra inviolável do AGENTS.md)
 //
 // O launcher NUNCA deve ignorar uma porta ocupada por outra instância do
@@ -582,11 +626,20 @@ function cmdStart(args) {
     const runtime = runtimePronto(home) ? runtimeDir(home) : copiarParaRuntime(home);
     console.log(`✓ Executando a partir do runtime permanente: ${runtime}`);
 
-    // Workers nascem em grupo de processos próprio (detached: true =
-    // CREATE_NEW_PROCESS_GROUP no Windows): sinais de Ctrl+C do terminal
-    // (MobaXterm, VS Code, perda de foco) matam apenas o launcher — o
-    // servidor Python continua rodando e só é encerrado pelo kill()
-    // controlado abaixo (ou sobrevive para a próxima execução detectar).
+    // -------------------------------------------------------------------------
+    // Launcher DESCARTÁVEL (arquitetura PandaNews — regra inviolável do
+    // AGENTS.md). O servidor sobe em grupo de processos próprio
+    // (detached = CREATE_NEW_PROCESS_GROUP no Windows, imune a Ctrl+C do
+    // terminal), com stdio em ARQUIVO (nunca pipes herdados do terminal) e
+    // `child.unref()` — o event loop deste launcher NÃO depende do filho.
+    // O launcher grava o lock, imprime o sucesso e SAI: o prompt volta, mas
+    // o servidor continua no ar até o comando `kill`. Não existe vínculo de
+    // morte em nenhum dos dois sentidos.
+    // -------------------------------------------------------------------------
+    const logPath = path.join(home, 'storage', 'logs', 'backend.log');
+    mkdirSync(path.dirname(logPath), { recursive: true });
+    const logFd = openSync(logPath, 'a');
+
     const child = spawn(python.cmd, [...python.args, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(porta), '--no-access-log'], {
       cwd: path.join(runtime, 'backend'),
       env: {
@@ -597,124 +650,89 @@ function cmdStart(args) {
         PYTHONUTF8: '1',
         PYTHONIOENCODING: 'utf-8',
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', logFd, logFd], // saída em arquivo: não herda o terminal
       detached: true,
       windowsHide: true,
     });
+    closeSync(logFd); // o filho tem sua própria cópia herdada do FD
+    child.unref(); // launcher descartável: o loop do Node não depende do filho
 
-    const prefix = (buf, tag) =>
-      buf
-        .toString('utf8')
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .forEach((line) => console.log(`[${tag}] ${line}`));
-    child.stdout.on('data', (d) => prefix(d, 'api'));
-    child.stderr.on('data', (d) => prefix(d, 'api'));
+    // Lock global: PID do backend + porta — sobrevive à morte do launcher.
+    escreverLock(home, child.pid ?? null, porta);
 
-    child.on('exit', (code) => {
-      console.log(code === 0 ? '\nLeadMaster encerrado. Até já!' : `\n✗ Servidor local encerrou com código ${code}.`);
-      process.exit(code === null ? 1 : code);
-    });
-
-    // Ciclo de vida vinculado (regra inviolável do AGENTS.md): se o Python
-    // cai, o launcher cai junto — nunca fica preso ao terminal sem servidor.
-    // O worker nunca é desreferenciado do event loop: o pai não pode morrer
-    // sozinho enquanto o filho vive.
-    child.on('close', (code) => {
-      console.log('Servidor encerrado');
-      process.exit(code === null ? 1 : code);
-    });
-
-    // Launcher morrendo encerra o worker (e vice-versa, via close acima) —
-    // handler ÚNICO de saída (regra inviolável): qualquer caminho de saída
-    // (erro inesperado, falha de health, sinais) leva o worker Python junto
-    // — nada de processos órfãos na máquina. No Windows, taskkill /T /F
-    // derruba a árvore inteira do uvicorn.
-    process.on('exit', () => {
-      if (child && child.pid) {
-        if (platform() === 'win32') {
-          spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
-        } else {
-          child.kill('SIGTERM');
-        }
-      }
-    });
-
-    // -------------------------------------------------------------------------
-    // Keep-alive INFALÍVEL — Dummy Server (regra inviolável do AGENTS.md)
-    //
-    // Um socket TCP aberto no sistema operacional (porta efêmera em 127.0.0.1)
-    // segura o event loop do Node INDEPENDENTE do terminal: mesmo que o
-    // MobaXterm feche o stdin (EOF), que o wrapper do npx feche os streams ou
-    // que timers sejam perdidos, o handle do servidor impede o processo de
-    // encerrar sozinho. Enquanto `keepAliveServer` existir, o prompt NUNCA é
-    // devolvido e o uvicorn nunca fica órfão. NUNCA REMOVER.
-    // -------------------------------------------------------------------------
-    const keepAliveServer = http.createServer((req, res) => res.end('ok'));
-    keepAliveServer.listen(0, '127.0.0.1');
-
-    const stop = () => {
-      console.log('\nEncerrando LeadMaster...');
-      if (platform() === 'win32' && child.pid) {
-        spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
-      } else {
-        child.kill('SIGTERM');
-      }
+    // Durante a curtíssima vida do launcher, sinais espúrios do MobaXterm
+    // são absorvidos no Windows (apenas log); SIGTERM/SIGBREAK encerram por
+    // código (matam o servidor recém-criado e removem o lock).
+    const ehWindows = platform() === 'win32';
+    const pararTudo = (codigo) => {
+      if (child && child.pid) matarArvoreProcesso(child.pid);
+      removerLock(home);
+      process.exit(codigo);
     };
+    const absorverSinal = (nome) => () => {
+      console.log(`[LAUNCHER] Sinal absorvido no Windows (${nome}) — o servidor continua em background.`);
+    };
+    process.on('SIGINT', ehWindows ? absorverSinal('SIGINT') : () => pararTudo(0));
+    process.on('SIGHUP', ehWindows ? absorverSinal('SIGHUP') : () => pararTudo(0));
+    process.on('SIGTERM', () => pararTudo(0));
+    if (ehWindows) {
+      // SIGBREAK (Ctrl+Break): parada legítima também no Windows.
+      process.on('SIGBREAK', () => pararTudo(0));
+    }
 
     console.log(`→ Subindo servidor local em ${url} ...`);
+    console.log(`  (log do servidor: ${logPath})`);
     const health = await waitForHealth(porta, 120000);
     if (!health) {
       console.error(`✗ O servidor não respondeu em ${url} dentro do tempo limite.`);
       console.error('  Veja os logs acima; rode "npx @danhachuel/leadmaster doctor" para diagnóstico.');
-      stop();
-      process.exit(1);
+      pararTudo(1);
+      return;
     }
 
-    // -------------------------------------------------------------------------
-    // Camadas SECUNDÁRIAS de keep-alive (o Dummy Server acima é a principal):
-    // setInterval mantém o loop ativo, stdin.resume ouve digitação, e o
-    // beforeExit re-arma o timer se o loop esvaziar. Erros de stdin são
-    // ignorados — nenhum deles pode derrubar o launcher.
-    // -------------------------------------------------------------------------
-    const ehWindows = platform() === 'win32';
-    const naoAbsorver = () => { stop(); process.exit(0); };
-    const absorverWindows = (nome) => () => {
-      console.log(`[LAUNCHER] Sinal absorvido no Windows (${nome}) — o LeadMaster continua rodando.`);
-    };
-    process.on('SIGINT', ehWindows ? absorverWindows('SIGINT') : naoAbsorver);
-    process.on('SIGHUP', ehWindows ? absorverWindows('SIGHUP') : naoAbsorver);
-    process.on('SIGTERM', naoAbsorver);
-    if (ehWindows) {
-      // SIGBREAK (Ctrl+Break): parada legítima também no Windows.
-      process.on('SIGBREAK', naoAbsorver);
-    }
-
-    setInterval(() => {}, 1000);
-    process.stdin.resume();
-    process.stdin.on('error', () => {});
-    process.on('beforeExit', () => {
-      setInterval(() => {}, 1000);
-    });
-
-    console.log(`✓ LeadMaster no ar em ${url} (dados: ${home})`);
+    console.log(`✓ LeadMaster rodando em background na porta ${porta} (dados: ${home})`);
     console.log('');
     console.log(`ℹ Abra ${url} no navegador quando quiser — o LeadMaster nunca abre janelas sozinho.`);
-    console.log(
-      ehWindows
-        ? 'ℹ Para encerrar: Ctrl+Break ou feche a janela (Ctrl+C é absorvido no Windows contra sinais espúrios do MobaXterm).'
-        : 'ℹ Para encerrar: Ctrl+C.',
-    );
-
-    // Congela o fluxo principal PARA SEMPRE (regra inviolável): a promessa
-    // nunca resolve, então nenhum código posterior pode rodar e nenhum exit
-    // "natural" acontece. A saída acontece somente pelo ciclo de vida do
-    // filho (Python morre) ou por SIGTERM/SIGBREAK — ambos com log.
-    await new Promise(() => {});
+    console.log('ℹ O terminal está livre: este launcher encerra e o servidor continua rodando.');
+    console.log(`ℹ Para encerrar o servidor: npx --yes @danhachuel/leadmaster@${VERSION} kill`);
+    process.exit(0);
   })().catch((err) => {
     console.error('✗ Erro inesperado ao iniciar:', err && err.message ? err.message : err);
     process.exit(1);
   });
+}
+
+/**
+ * Comando `kill` (alias `stop`): encerra o servidor em background.
+ * 1. Lê o lock (<home>/leadmaster.pid) e mata a árvore do PID do backend;
+ * 2. Rede de segurança: varre as portas candidatas e encerra instâncias
+ *    LeadMaster confirmadas (lock perdido/desatualizado, órfãos);
+ * 3. Remove o lock e imprime o resultado.
+ */
+async function cmdKill(args) {
+  const home = resolveHome(args);
+  const lock = lerLock(home);
+  let matouAlgo = false;
+
+  if (lock && lock.pid) {
+    console.log(`ℹ Encerrando servidor em background (PID ${lock.pid}${lock.porta ? `, porta ${lock.porta}` : ''})...`);
+    if (matarArvoreProcesso(lock.pid)) {
+      matouAlgo = true;
+    }
+  }
+
+  // Rede de segurança: órfãos LeadMaster (confirmados por health) na porta do
+  // lock; sem lock, varre a partir da porta padrão. Processos de outros
+  // projetos nunca são tocados.
+  const portaBase = lock && lock.porta ? lock.porta : UI_PORT;
+  await encerrarInstanciaAnterior(portaBase);
+  removerLock(home);
+
+  if (matouAlgo) {
+    console.log('✓ Servidor encerrado com sucesso.');
+  } else {
+    console.log('ℹ Nenhum servidor do LeadMaster estava rodando.');
+  }
 }
 
 async function cmdDoctor(args) {
@@ -736,6 +754,12 @@ async function cmdDoctor(args) {
 
   const ativaEm = await procurarInstanciaAtiva(portaInicial);
   console.log(`Servidor UI ........ ${ativaEm ? `rodando em http://127.0.0.1:${ativaEm}` : `parado (porta inicial ${portaInicial})`}`);
+  const lock = lerLock(home);
+  if (lock && lock.pid) {
+    console.log(`Lock do servidor ... PID ${lock.pid}${lock.porta ? ` · porta ${lock.porta}` : ''}${lock.versao ? ` · versão ${lock.versao}` : ''}`);
+  } else {
+    console.log('Lock do servidor ... ausente (nenhum start registrado)');
+  }
   const hasDist = existsSync(path.join(PKG_ROOT, 'frontend', 'dist', 'index.html'));
   console.log(`Interface (dist) ... ${hasDist ? 'presente' : 'ausente (modo dev ou rebuild necessário)'}`);
   console.log(`Runtime permanente . ${runtimePronto(home) ? `pronto (${runtimeDir(home)})` : 'ausente — rode install'}`);
@@ -750,10 +774,14 @@ function cmdHelp() {
   console.log('');
   console.log('Comandos:');
   console.log('  install   Prepara a pasta de dados e instala dependências Python.');
-  console.log('  start     Sobe o servidor local e imprime a URL no terminal (você abre o navegador).');
+  console.log('  start     Sobe o servidor em background (padrão) e imprime a URL — o terminal fica livre.');
+  console.log('  kill      Encerra o servidor em background (alias: stop).');
   console.log('  doctor    Diagnóstico do ambiente.');
   console.log('  version   Mostra a versão.');
   console.log('  help      Esta ajuda.');
+  console.log('');
+  console.log('Arquitetura: o servidor roda destacado (background) e sobrevive ao terminal.');
+  console.log('Para encerrar, use sempre o comando kill — fechar o terminal não o derruba.');
   console.log('');
   console.log('Flags:');
   console.log('  --home=<caminho>   Pasta de dados (padrão: Documents\\REPOSITORIO\\LeadMaster).');
@@ -805,6 +833,13 @@ switch (command) {
     });
     break;
   case 'start': cmdStart(args); break;
+  case 'kill': case 'stop':
+    // Launcher descartável: o kill também é efêmero — encerra e sai.
+    cmdKill(args).catch((err) => {
+      console.error('✗ Erro inesperado ao encerrar:', err && err.message ? err.message : err);
+      process.exit(1);
+    });
+    break;
   case 'doctor': cmdDoctor(args); break;
   case 'version': console.log(VERSION); break;
   case 'help': case '--help': case '-h': cmdHelp(); break;

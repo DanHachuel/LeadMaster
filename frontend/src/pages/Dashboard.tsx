@@ -42,6 +42,12 @@ export function Dashboard({ nomeUsuario }: { nomeUsuario: string }) {
             </span>
           )}
         </div>
+        {/* Modelo background: o servidor sobrevive ao terminal; encerrar é comando */}
+        <p className="mt-1.5 text-xs text-gray-400">
+          <i className="fas fa-server mr-1" />
+          O servidor roda em <strong>background</strong> e sobrevive ao fechamento do terminal. Para encerrar:{' '}
+          <code className="bg-gray-100 rounded px-1 py-0.5 text-[11px]">npx --yes @danhachuel/leadmaster kill</code>
+        </p>
       </div>
 
       {erro && (

@@ -37,6 +37,41 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.33] — 2026-11-10
+
+### Alterado (refatoração críticâ de arquitetura)
+
+- **Launcher descartável + servidor autônomo (arquitetura PandaNews):** o
+  encerramento silencioso no MobaXterm estava residindo no modelo anterior, que
+  mantinha o Node vivo amarrado ao terminal (`stdin.resume`, `setInterval`,
+  dummy server, `await new Promise`) e vinculava a morte do Node à do Python.
+  Agora:
+  - o worker nasce com **`stdio: ['ignore', logFd, logFd]`** — saída em
+    `<home>/storage/logs/backend.log`, **nunca pipes no terminal**;
+  - **`child.unref()`** logo após o spawn: o event loop do launcher não depende
+    do filho; removidos `child.on('exit')`/`close`, `process.on('exit')` e
+    **todos** os keep-alives;
+  - o launcher grava o **lock global `<home>/leadmaster.pid`**
+    (`{pid, porta, versao, iniciado_em}`), imprime o sucesso e chama
+    `process.exit(0)` — **o prompt volta e o servidor continua no ar**;
+  - novo comando **`kill`** (alias `stop`): lê o lock, mata a árvore
+    (`taskkill /F /T /PID` no Windows / `kill -9` no Unix), roda a rede de
+    segurança por porta, remove o lock e imprime "Servidor encerrado com
+    sucesso";
+  - mensagem final do `start`: *"LeadMaster rodando em background na porta
+    5055. Para encerrar, use: npx --yes @danhachuel/leadmaster@<versão> kill"*;
+  - `doctor` mostra o lock do servidor; `help` documenta o novo comando.
+- **Frontend:** Dashboard exibe aviso do modelo background + comando `kill` —
+  fechar o terminal não derruba mais o app.
+- **AGENTS.md:** seção 🚨 REGRA INVIOLÁVEL reescrita para a nova arquitetura
+  (spawn destacado com stdio em arquivo, launcher descartável, lock file,
+  comando kill, higiene e guarda da consola).
+- **Gate de regressão reescrito** (`test_launcher_protections.py`): falha se
+  `child.unref()`, `stdio: ['ignore', logFd, logFd]`, o lock ou o comando
+  `kill` desaparecerem; falha se qualquer keep-alive proibido
+  (`stdin.resume`/`setInterval`/`http.createServer`/`await new Promise`) ou
+  vínculo de morte voltar. Suíte: **95 passed**.
+
 ## [0.1.32] — 2026-11-10
 
 ### Adicionado
