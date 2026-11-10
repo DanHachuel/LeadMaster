@@ -26,3 +26,6 @@ Thumbs.db
 # Logs de teste locais
 *.log
 *.err
+
+# Lock de runtime do launcher
+leadmaster.pid
