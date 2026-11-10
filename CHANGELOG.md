@@ -37,6 +37,34 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.30] — 2026-11-10
+
+### Adicionado
+
+- **Suporte — chat de teste do Agente de Atendimento (LLM):**
+  - Rota **`POST /api/agents/chat`** (`{"message": "..."}`): monta o contexto com
+    o **prompt do sistema do agente** (`agents.json → atendimento.prompt`,
+    editável em Agentes) + **histórico salvo** + a mensagem nova, chama a LLM
+    OpenAI-compatível já existente (`services/llm.py`) e devolve a resposta.
+    Sem API Key → **400 acionável** ("Ferramentas → LLM..."); mensagem só com
+    espaços → **400** (prevenção de erros — Nielsen).
+  - **Histórico persistente** (`chat_history.json`, últimas 200 mensagens):
+    `GET /api/agents/chat/history` restaura a conversa ao recarregar a página e
+    `DELETE /api/agents/chat/history` limpa. A resposta do assistante só entra
+    no histórico quando a chamada à LLM dá certo.
+  - `frontend/src/pages/Suporte.tsx` reescrita com o **chat no topo**: balões
+    do usuário à direita em gradiente indigo/purple e do agente à esquerda em
+    cinza (von Restorff), indicador **"digitando..."** com três pontinhos
+    animados enquanto a LLM pensa (Zeigarnik), **auto-scroll** para a última
+    mensagem, campo largo + botão-avião com **Enter para enviar** (Fitts) e
+    bloqueio de mensagem vazia. Diagnóstico do ambiente e FAQ preservados
+    abaixo (FAQ ganhou as perguntas do chat).
+- **6 novos testes pytest** (`backend/tests/test_chat_suporte.py`) com a LLM
+  mockada (zero tokens no CI): mensagem vazia → 400, sem chave → 400
+  acionável, resposta + histórico persistidos, contexto (system + histórico +
+  nova mensagem) conferido, limpar histórico e falha da LLM não gravando
+  resposta falsa. Suíte completa: **94 passed**.
+
 ## [0.1.29] — 2026-11-09
 
 ### Adicionado

@@ -146,6 +146,10 @@ class ChatIn(BaseModel):
     mensagens: list[dict]
 
 
+class ChatMessageIn(BaseModel):
+    message: str = Field(min_length=1)
+
+
 class TemplateTestIn(BaseModel):
     template: str
     lead_id: str | None = None
@@ -825,6 +829,57 @@ def salvar_templates(patch: dict):
 @app.post("/api/agents/templates/test")
 def testar_template(dados: TemplateTestIn):
     return agents.testar_template(dados.template, dados.lead_id)
+
+
+@app.post("/api/agents/chat")
+def agents_chat(dados: ChatMessageIn):
+    """Chat de teste do Agente de Atendimento (página Suporte).
+
+    Recebe {"message": "..."}, monta o contexto com o prompt do sistema de
+    agents.json (agente "atendimento") + historico salvo, chama a LLM
+    (OpenAI-compatível) e devolve a resposta. Sem API Key configurada, erro
+    400 acionável ("Ferramentas → LLM"). O historico persiste em
+    chat_history.json — recarregar a página não perde a conversa.
+    """
+    texto = (dados.message or "").strip()
+    if not texto:
+        raise HTTPException(400, "Mensagem vazia — escreva algo para enviar.")
+    if not llm.configurado():
+        raise HTTPException(
+            400,
+            "LLM não configurado. Vá em Ferramentas → LLM, informe base_url, api_key e modelo "
+            "(qualquer API OpenAI-compatível, ex.: NVIDIA NIM).",
+        )
+
+    prompt_sistema = storage.get_agents().get("atendimento", {}).get("prompt", "")
+    mensagens = []
+    if prompt_sistema:
+        mensagens.append({"role": "system", "content": prompt_sistema})
+    for m in storage.list_chat_history():
+        papel = "user" if m.get("papel") == "user" else "assistant"
+        conteudo = (m.get("conteudo") or "").strip()
+        if conteudo:
+            mensagens.append({"role": papel, "content": conteudo})
+    mensagens.append({"role": "user", "content": texto})
+
+    storage.append_chat_history("user", texto)
+    resultado = agents.atendimento_chat(mensagens)
+    if resultado.get("ok") and resultado.get("resposta"):
+        storage.append_chat_history("assistant", resultado["resposta"])
+    return resultado
+
+
+@app.get("/api/agents/chat/history")
+def agents_chat_history():
+    """Historico do chat de teste (para restaurar a conversa ao recarregar)."""
+    return storage.list_chat_history()
+
+
+@app.delete("/api/agents/chat/history")
+def agents_chat_clear():
+    """Limpa a conversa (prevenção de erros: o usuário decide quando apagar)."""
+    storage.clear_chat_history()
+    return {"ok": True}
 
 
 @app.post("/api/agents/attendance/chat")

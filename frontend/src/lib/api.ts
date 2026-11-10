@@ -150,6 +150,11 @@ export const api = {
       req<{ renderizado: string }>('/agents/templates/test', corpo({ template, lead_id })),
     chat: (mensagens: { role: string; content: string }[]) =>
       req<{ ok: boolean; resposta?: string; mensagem?: string }>('/agents/attendance/chat', corpo({ mensagens })),
+    chatSimples: (message: string) =>
+      req<{ ok: boolean; resposta?: string; mensagem?: string }>('/agents/chat', corpo({ message })),
+    chatHistorico: () =>
+      req<{ papel: 'user' | 'assistant'; conteudo: string; momento: string }[]>('/agents/chat/history'),
+    chatLimpar: () => req<{ ok: boolean }>('/agents/chat/history', { method: 'DELETE' }),
   },
 
   // Funil de Prospecção

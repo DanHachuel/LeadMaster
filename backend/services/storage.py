@@ -21,6 +21,7 @@ CAMPAIGNS_FILE = "campaigns.json"
 PIPELINE_FILE = "pipeline.json"
 CONFIG_FILE = "config.json"
 AGENTS_FILE = "agents.json"
+CHAT_HISTORY_FILE = "chat_history.json"
 
 
 # ---------------------------------------------------------------------------
@@ -400,6 +401,34 @@ def save_agent(agent_id: str, dados: dict) -> dict:
         agents[agent_id].update({k: v for k, v in dados.items() if k in ("status", "prompt")})
         _write(AGENTS_FILE, agents)
         return agents[agent_id]
+
+
+# ---------------------------------------------------------------------------
+# Histórico do chat de teste (Suporte → Agente de Atendimento)
+# ---------------------------------------------------------------------------
+
+# Quantas mensagens manter no arquivo (as mais antigas caem fora).
+_CHAT_HISTORY_MAX = 200
+
+
+def list_chat_history() -> list:
+    return _read(CHAT_HISTORY_FILE, [])
+
+
+def append_chat_history(papel: str, conteudo: str) -> list:
+    """Acrescenta uma mensagem (papel: user|assistant) e persiste o arquivo."""
+    with LOCK:
+        historico = list_chat_history()
+        historico.append({"papel": papel, "conteudo": conteudo, "momento": now_iso()})
+        if len(historico) > _CHAT_HISTORY_MAX:
+            historico = historico[-_CHAT_HISTORY_MAX:]
+        _write(CHAT_HISTORY_FILE, historico)
+        return historico
+
+
+def clear_chat_history() -> None:
+    with LOCK:
+        _write(CHAT_HISTORY_FILE, [])
 
 
 # ---------------------------------------------------------------------------
