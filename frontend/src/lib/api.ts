@@ -92,6 +92,8 @@ export const api = {
       req<Campanha>('/campaigns', corpo(dados)),
     status: (id: string, status: 'ativa' | 'pausada' | 'rascunho') =>
       req<Campanha>(`/campaigns/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    gerarMensagem: (nicho: string, tom: string) =>
+      req<{ template: string }>('/campaigns/generate-message', corpo({ nicho, tom })),
     iniciar: (id: string) => req<{ ok: boolean; mensagem: string }>(`/campaigns/${id}/start`, corpo({})),
     pausar: (id: string) => req<{ ok: boolean; mensagem: string }>(`/campaigns/${id}/pause`, corpo({})),
     parar: (id: string) => req<{ ok: boolean; mensagem: string }>(`/campaigns/${id}/stop`, corpo({})),

@@ -647,6 +647,23 @@ def buscar_cnpj(dados: CnpjSearchIn):
         raise HTTPException(502, str(e))
 
 
+class GenerateMessageIn(BaseModel):
+    nicho: str = Field(min_length=2)
+    tom: str = "amigável e direto"
+
+
+@app.post("/api/campaigns/generate-message")
+def gerar_mensagem_campanha(dados: GenerateMessageIn):
+    """Gera um template de prospecção com a LLM (Agente de Disparo)."""
+    try:
+        template = llm.gerar_template_prospeccao(dados.nicho, dados.tom)
+    except llm.LLMNaoConfigurado as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMErro as e:
+        raise HTTPException(500, str(e))
+    return {"template": template}
+
+
 # ---------------------------------------------------------------------------
 # Agentes de IA (status + prompt do sistema)
 # ---------------------------------------------------------------------------

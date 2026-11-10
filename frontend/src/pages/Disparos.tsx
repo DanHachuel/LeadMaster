@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import type { Campanha, Lead } from '../lib/types';
 import { ETAPAS, ETAPA_LABEL } from '../lib/types';
 import { Modal } from '../components/Modal';
@@ -22,6 +22,8 @@ export function Disparos() {
 
   const [nome, setNome] = useState('');
   const [template, setTemplate] = useState('');
+  const [nicho, setNicho] = useState('');
+  const [gerando, setGerando] = useState(false);
   const [canal, setCanal] = useState<'texto' | 'audio'>('texto');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('leads');
 
@@ -49,6 +51,28 @@ export function Disparos() {
     () => Object.fromEntries(ETAPAS.map((e) => [e, leads.filter((l) => l.etapa === e).length])) as Record<string, number>,
     [leads],
   );
+
+  const gerarComIa = async () => {
+    if (nicho.trim().length < 2) {
+      toast('erro', 'Informe o nicho do público (ex.: "Dentistas").');
+      return;
+    }
+    setGerando(true);
+    try {
+      const r = await api.campanhas.gerarMensagem(nicho.trim(), 'amigável e direto');
+      setTemplate(r.template);
+      toast('sucesso', 'Template gerado pela IA! Lembre-se de usar {nome} e {empresa}.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Falha ao gerar template.';
+      if (e instanceof ApiError && e.status === 400) {
+        toast('erro', 'Configure a API Key na aba Ferramentas primeiro.');
+      } else {
+        toast('erro', msg);
+      }
+    } finally {
+      setGerando(false);
+    }
+  };
 
   const criar = async () => {
     if (!nome.trim()) {
@@ -232,19 +256,37 @@ export function Disparos() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Template da Mensagem *</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-gray-500">Template da Mensagem *</label>
+              <div className="flex items-center gap-2">
+                <input
+                  value={nicho}
+                  onChange={(e) => setNicho(e.target.value)}
+                  placeholder="Nicho do público (ex.: Dentistas)"
+                  className="w-52 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
+                />
+                {/* Botão secundário com ícone de varinha (von Restorff) */}
+                <button
+                  onClick={gerarComIa}
+                  disabled={gerando}
+                  className="px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  <i className={cn('fas fa-wand-magic-sparkles', gerando && 'fa-spin')} />
+                  {gerando ? 'Gerando...' : 'Gerar com IA'}
+                </button>
+              </div>
+            </div>
             <textarea
               value={template}
               onChange={(e) => setTemplate(e.target.value)}
               rows={4}
-              placeholder={'Use variáveis: {{nome}}, {{primeiro_nome}}, {{empresa}}, {{cidade}}...'}
+              placeholder={'Use variáveis: {nome}, {empresa}, {telefone}...'}
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none font-mono"
             />
             <p className="text-[11px] text-gray-400 mt-1">
-              Variáveis: <code className="bg-gray-100 px-1 rounded">{'{{nome}}'}</code>,{' '}
-              <code className="bg-gray-100 px-1 rounded">{'{{primeiro_nome}}'}</code>,{' '}
-              <code className="bg-gray-100 px-1 rounded">{'{{empresa}}'}</code>,{' '}
-              <code className="bg-gray-100 px-1 rounded">{'{{cidade}}'}</code>
+              Variáveis: <code className="bg-gray-100 px-1 rounded">{'{nome}'}</code>,{' '}
+              <code className="bg-gray-100 px-1 rounded">{'{empresa}'}</code>,{' '}
+              <code className="bg-gray-100 px-1 rounded">{'{telefone}'}</code>
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

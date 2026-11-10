@@ -67,3 +67,34 @@ def testar_conexao() -> dict:
         return {"ok": False, "mensagem": str(e)}
     except LLMErro as e:
         return {"ok": False, "mensagem": str(e)}
+
+
+def gerar_template_prospeccao(nicho: str, tom: str = "amigável e direto") -> str:
+    """Gera um template de mensagem de prospecção para o nicho informado.
+
+    O prompt OBRIGA o uso das variáveis dinâmicas `{nome}` e `{empresa}`, que o
+    worker de disparos substitui pelos dados reais de cada lead antes do envio.
+    A validação de configuração da LLM é feita pelo próprio `chat()`.
+    """
+    sistema = (
+        "Você é um especialista em copywriting de prospecção B2B por mensagem. "
+        "Escreve mensagens curtas, educadas e personalizadas, sem spam."
+    )
+    usuario = (
+        f"Escreva UM template de mensagem de prospecção para o nicho: {nicho}.\n"
+        f"Tom de voz: {tom}.\n"
+        "REQUISITOS OBRIGATÓRIOS:\n"
+        "- Use as variáveis dinâmicas {nome} e {empresa} exatamente nesse formato "
+        "(chave simples, uma chave por variação).\n"
+        "- A mensagem deve ter no máximo 3 frases curtas, terminar com uma pergunta "
+        "ou convite leve.\n"
+        "- Responda APENAS com o texto do template, sem aspas, sem explicações."
+    )
+    try:
+        return chat(
+            [{"role": "system", "content": sistema}, {"role": "user", "content": usuario}],
+            temperature=0.7,
+            max_tokens=400,
+        ).strip()
+    except LLMErro:
+        raise

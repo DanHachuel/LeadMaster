@@ -37,6 +37,32 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.31] — 2026-11-10
+
+### Adicionado
+
+- **Geração de mensagens com IA nos Disparos:**
+  - Rota `POST /api/campaigns/generate-message` (`nicho`, `tom`) — usa
+    `services/llm.py` (`gerar_template_prospeccao`) para escrever um template de
+    prospecção; o prompt **obriga** as variáveis `{nome}` e `{empresa}`. Sem LLM
+    configurada → **400** com mensagem acionável; erro da LLM → **500** com o
+    detalhe (nunca finge sucesso).
+  - Worker (`agents.render_template`) passa a substituir **também a chave
+    simples** (`{nome}`, `{empresa}`, `{telefone}`, `{cidade}`...) além da
+    `{{chave}}` — chaves mais longas primeiro, sem substituição parcial. O
+    worker de disparos já usava `render_template` antes de simular o envio;
+    agora os templates gerados pela IA funcionam sem edição manual.
+  - Frontend (`Disparos.tsx`): campo **"Nicho do Público"** + botão secundário
+    **"Gerar com IA"** (ícone de varinha, roxo — von Restorff) ao lado do
+    textarea; **spinner** enquanto gera (Zeigarnik); toast de sucesso
+    *"Template gerado pela IA! Lembre-se de usar {nome} e {empresa}."*; LLM sem
+    chave → toast *"Configure a API Key na aba Ferramentas primeiro."*
+    (prevenção de erros).
+- **5 novos testes pytest** (`backend/tests/test_campaign_message.py`): geração
+  com LLM mockada (template contém as variáveis), 400 sem LLM,
+  `render_template` chave simples e dupla, e o **worker substituindo as
+  variáveis** antes do envio (evento gravado com o nome real do lead).
+
 ## [0.1.30] — 2026-11-10
 
 ### Adicionado

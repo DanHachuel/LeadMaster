@@ -40,6 +40,12 @@ def salvar_templates(patch: dict) -> dict:
 
 
 def render_template(texto: str, lead: dict) -> str:
+    """Substitui as variáveis do template pelos dados do lead.
+
+    Aceita as duas formas: `{{nome}}` (chave dupla) e `{nome}` (chave simples) —
+    a chave dupla é processada primeiro e, na chave simples, as chaves mais
+    longas vêm antes (evita substituição parcial de {primeiro_nome}).
+    """
     from .crm_agent import _score  # evita import circular no topo
 
     minha_empresa = storage.get_config().get("agentes", {}).get("disparo", {}).get("minha_empresa", "LeadMaster")
@@ -53,8 +59,12 @@ def render_template(texto: str, lead: dict) -> str:
         "minha_empresa": minha_empresa,
         "score": str(lead.get("score") or _score(lead)),
     }
+    # 1) Forma de chave dupla: {{chave}}
     for chave, valor in variaveis.items():
         texto = texto.replace("{{" + chave + "}}", str(valor))
+    # 2) Forma de chave simples: {chave} — mais longas primeiro.
+    for chave in sorted(variaveis.keys(), key=len, reverse=True):
+        texto = texto.replace("{" + chave + "}", str(variaveis[chave]))
     return texto
 
 
