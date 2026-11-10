@@ -18,6 +18,7 @@ const NAVEGACAO: { secao?: string; itens: ItemNav[] }[] = [
   {
     secao: 'Conexões',
     itens: [
+      { para: '/conexoes', icone: 'fab fa-whatsapp', rotulo: 'Conexões' },
       { para: '/leads', icone: 'fas fa-users', rotulo: 'Leads' },
       { para: '/agentes', icone: 'fas fa-robot', rotulo: 'Agentes' },
       { para: '/ferramentas', icone: 'fas fa-tools', rotulo: 'Ferramentas' },

@@ -108,6 +108,13 @@ DEFAULT_CONFIG = {
     "integracoes": {
         "openoutreach": {"url": "", "enabled": False, "send_path": "/api/send"},
         "pipecat": {"url": ""},
+        "whatsapp": {
+            "gateway_type": "openwa",
+            "gateway_url": "http://127.0.0.1:2785",
+            "api_key": "",
+            "session_id": "default",
+            "enabled": False,
+        },
     },
     "extratores": {
         "google_maps_cli": "",

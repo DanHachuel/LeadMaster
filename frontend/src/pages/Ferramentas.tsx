@@ -180,6 +180,51 @@ export function Ferramentas({ onConfigSalva }: { onConfigSalva?: (config: AppCon
         />
       </Cartao>
 
+      {/* WhatsApp — gateway local */}
+      <Cartao titulo="WhatsApp — gateway (OpenWA/WAHA)" icone="fab fa-whatsapp">
+        <label className="flex items-center gap-2 text-sm text-gray-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={config.integracoes.whatsapp.enabled}
+            onChange={(e) => atualizar((c) => { c.integracoes.whatsapp.enabled = e.target.checked; })}
+            className="w-4 h-4 accent-green-500"
+          />
+          Usar gateway real (sem esta opção, os disparos são simulados)
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de gateway</label>
+            <select
+              value={config.integracoes.whatsapp.gateway_type}
+              onChange={(e) => atualizar((c) => { c.integracoes.whatsapp.gateway_type = e.target.value; })}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
+            >
+              <option value="openwa">OpenWA (padrão)</option>
+              <option value="waha">WAHA</option>
+            </select>
+          </div>
+          <CampoSecreto
+            rotulo="API Key do gateway"
+            configurado={!!config.integracoes.whatsapp.api_key_configurado}
+            onChange={(v) => atualizar((c) => { c.integracoes.whatsapp.api_key = v; })}
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Campo
+            rotulo="URL do gateway"
+            valor={config.integracoes.whatsapp.gateway_url}
+            onChange={(v) => atualizar((c) => { c.integracoes.whatsapp.gateway_url = v; })}
+            placeholder="http://127.0.0.1:2785"
+          />
+          <Campo
+            rotulo="ID da sessão"
+            valor={config.integracoes.whatsapp.session_id}
+            onChange={(v) => atualizar((c) => { c.integracoes.whatsapp.session_id = v; })}
+            placeholder="default"
+          />
+        </div>
+      </Cartao>
+
       {/* Perfil */}
       <Cartao titulo="Perfil e licença" icone="fas fa-user">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -167,6 +167,13 @@ export const api = {
       gargalo: string | null;
     }>('/funnel'),
 
+  // WhatsApp (gateway local OpenWA/WAHA)
+  whatsapp: {
+    status: () => req<{ estado: string; bruto: string; numero: string; gateway_url: string }>('/whatsapp/status'),
+    conectar: () => req<{ ok: boolean; status_http?: number }>('/whatsapp/sessions/start', corpo({})),
+    qrUrl: () => '/api/whatsapp/qr',
+  },
+
   // Webhook
   webhook: {
     obter: () => req<{ url: string; eventos: string[]; ultimo_teste: string | null }>('/webhook'),

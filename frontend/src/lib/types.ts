@@ -89,6 +89,14 @@ export interface AppConfig {
   integracoes: {
     openoutreach: { url: string; enabled: boolean; send_path: string };
     pipecat: { url: string };
+    whatsapp: {
+      gateway_type: string;
+      gateway_url: string;
+      api_key: string;
+      api_key_configurado?: boolean;
+      session_id: string;
+      enabled: boolean;
+    };
   };
   extratores: {
     google_maps_cli: string;

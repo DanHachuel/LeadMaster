@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from services import agents, crm_agent, extractors, llm, storage
+from services import agents, crm_agent, extractors, llm, storage, whatsapp
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
@@ -902,6 +902,35 @@ def agents_chat_clear():
 @app.post("/api/agents/attendance/chat")
 def atendimento_chat(dados: ChatIn):
     return agents.atendimento_chat(dados.mensagens)
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp — gateway local (OpenWA / WAHA)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/whatsapp/status")
+def whatsapp_status():
+    try:
+        return whatsapp.status()
+    except whatsapp.GatewayErro as e:
+        raise HTTPException(503, str(e))
+
+
+@app.post("/api/whatsapp/sessions/start")
+def whatsapp_iniciar_sessao():
+    try:
+        return whatsapp.iniciar_sessao()
+    except whatsapp.GatewayErro as e:
+        raise HTTPException(503, str(e))
+
+
+@app.get("/api/whatsapp/qr")
+def whatsapp_qr():
+    try:
+        conteudo, content_type = whatsapp.qr_bytes()
+    except whatsapp.GatewayErro as e:
+        raise HTTPException(503, str(e))
+    return Response(content=conteudo, media_type=content_type)
 
 
 # ---------------------------------------------------------------------------

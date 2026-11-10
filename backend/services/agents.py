@@ -11,7 +11,7 @@ import time
 
 import httpx
 
-from . import llm, storage
+from . import llm, storage, whatsapp
 
 
 class AgenteIndisponivel(Exception):
@@ -285,6 +285,18 @@ async def processar_campanha_em_background(campaign_id: str, delay_segundos: flo
         if not lead:
             erros += 1
             eventos.append({"lead_id": lead_id, "status": "erro", "mensagem": "Lead removido da base.", "momento": momento})
+        elif whatsapp.configurado():
+            # Gateway real (OpenWA/WAHA): envio de verdade. Falha do gateway
+            # conta como erro do lead, mas NUNCA trava a campanha inteira.
+            mensagem = render_template(campanha.get("mensagem") or "", lead)
+            try:
+                whatsapp.enviar_texto(lead.get("telefone", ""), mensagem)
+                enviadas += 1
+                eventos.append({"lead_id": lead_id, "status": "enviado", "mensagem": mensagem[:120], "momento": momento})
+                ja_enviados.add(lead_id)
+            except whatsapp.GatewayErro as e:
+                erros += 1
+                eventos.append({"lead_id": lead_id, "status": "erro", "mensagem": f"Gateway WhatsApp: {e}", "momento": momento})
         elif indice % SIM_ERRO_A_CADA == 0:
             erros += 1
             eventos.append({"lead_id": lead_id, "status": "erro", "mensagem": "Falha simulada de envio (1 a cada 10).", "momento": momento})

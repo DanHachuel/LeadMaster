@@ -47,6 +47,13 @@ export function Disparos() {
     refetchIntervalInBackground: false,
   });
 
+  const statusWhatsapp = useQuery({
+    queryKey: ['whatsapp-status-disparos'],
+    queryFn: () => api.whatsapp.status(),
+    refetchInterval: 10000,
+    retry: false,
+  });
+
   const totalPorEtapa = useMemo(
     () => Object.fromEntries(ETAPAS.map((e) => [e, leads.filter((l) => l.etapa === e).length])) as Record<string, number>,
     [leads],
@@ -105,6 +112,11 @@ export function Disparos() {
   };
 
   const alterarStatus = async (campanha: Campanha, status: 'ativa' | 'pausada' | 'rascunho') => {
+    // Prevenção de erros: sem WhatsApp conectado não há disparo real.
+    if (status === 'ativa' && statusWhatsapp.data?.estado !== 'conectado') {
+      toast('erro', 'Conecte o WhatsApp na aba Conexões antes de disparar.');
+      return;
+    }
     // Otimista: a UI responde instantaneamente (controle do usuário); se o
     // backend falhar, o próximo polling (2s) reverte com a verdade do JSON.
     queryClient.setQueryData<Campanha[]>(['campanhas'], (atual) =>

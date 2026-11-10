@@ -37,6 +37,39 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.32] — 2026-11-10
+
+### Adicionado
+
+- **Gateway WhatsApp (OpenWA padrão, WAHA opcional) — disparos reais:**
+  - Config (Ferramentas → WhatsApp): `gateway_type` (openwa/waha),
+    `gateway_url` (padrão `http://127.0.0.1:2785`), API Key (`X-API-Key`),
+    `session_id` e toggle **"Usar gateway real"** — sem o toggle, os disparos
+    seguem simulados (comportamento padrão preservado).
+  - Serviço `backend/services/whatsapp.py`: status (`conectado` /
+    `aguardando_qr` / `desconectado`), início de sessão, repasse do QR Code e
+    envio de texto (`chatId` no formato `5511999999999@c.us`), com as rotas do
+    OpenWA e as equivalentes do WAHA (`/api/sendText`).
+  - Rotas: `GET /api/whatsapp/status` (503 acionável com o gateway fora),
+    `POST /api/whatsapp/sessions/start` e `GET /api/whatsapp/qr` (repassa a
+    imagem do gateway).
+  - **Worker de disparos** (`processar_campanha_em_background`): com gateway
+    ativo, envia de verdade pelo gateway; falha do gateway conta como erro do
+    lead (com log) e **nunca trava a campanha**. Sem gateway → simulação
+    mantida.
+  - Frontend: nova página **`/conexoes`** (menu lateral "Conexões"): card do
+    WhatsApp com **polling de 5s** (TanStack Query), botão grande **"Conectar
+    WhatsApp"** (Fitts), modal com QR Code + spinner *"Aguardando leitura do
+    celular..."* (Zeigarnik), badge verde esmeralda com pulso quando conectado
+    (von Restorff) e número da conta. Em **Disparos**, ativar campanha sem
+    WhatsApp conectado é **bloqueado** com toast *"Conecte o WhatsApp na aba
+    Conexões antes de disparar."* (prevenção de erros).
+- **10 novos testes pytest** (`backend/tests/test_whatsapp_gateway.py`):
+  status conectado / aguardando QR / gateway offline (503) / QR repassado,
+  worker enviando pelo gateway (payload com chatId e mensagem renderizada),
+  worker com falha do gateway (3 erros, campanha concluída sem travar) e
+  simulação preservada sem gateway.
+
 ## [0.1.31] — 2026-11-10
 
 ### Adicionado
