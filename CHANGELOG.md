@@ -37,6 +37,17 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.28] — 2026-11-09
+
+### Corrigido
+
+- **Renumeração por colisão (E409):** a `0.1.27` já estava staged no registry
+  (sessão paralela), então esta versão republica o estado atual do `main` —
+  keep-alive do launcher com **Dummy Server** (`http.createServer` +
+  `listen(0, '127.0.0.1')` + `await new Promise(() => {})`, camada principal;
+  `stdin.resume`/`setInterval`/`beforeExit` secundárias) e os **gates de
+  regressão** correspondentes. Suíte: **83 passed**.
+
 ## [0.1.27] — 2026-11-09
 
 ### Corrigido (crítico)
