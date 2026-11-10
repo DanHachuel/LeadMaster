@@ -37,6 +37,36 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.29] — 2026-11-09
+
+### Adicionado
+
+- **Motor de disparos em background (`agents.processar_campanha_em_background`)** —
+  ativar uma campanha agora executa de verdade (simulação de envio):
+  - Rota `PUT /api/campaigns/{id}/status` com `"status": "ativa"` muda o status
+    para `em_andamento` e dispara o worker via **FastAPI `BackgroundTasks`** — a
+    resposta volta na hora, os envios sobem depois em `campaigns.json`.
+  - O worker percorre os `lead_ids` (filtro por etapa já aplicado na criação),
+    com `asyncio.sleep(1)` entre envios (tempo real de visualização na UI) e
+    **1 erro simulado a cada 10** leads; grava contadores e eventos a cada ciclo
+    via `storage.upsert_campaign` (lock de threading + escrita atômica).
+  - **Pausa no meio:** o registro é RELIDO do storage a cada ciclo e os
+    contadores fazem merge sobre a cópia fresca — pausar/parar (ou uma pausa
+    gravada durante o `sleep`) nunca é sobrescrita; o loop para no ciclo
+    seguinte. Reativar uma **concluída** zera os contadores (nova rodada);
+    reativar uma **pausada** continua de onde parou (leads já enviados são
+    pulados). Ao final, status → `concluida` (+ webhook `campanha.concluida`).
+- **Frontend Disparos:** polling baixado de 4s → **2s** (barra de progresso
+  acompanha os contadores em tempo real), bloco de campanha ativa ganhou selo
+  **"Processando..."**, contagem de restantes e barra mais destacada
+  (Zeigarnik); **Pausar/Iniciar agora é otimista** — a UI atualiza
+  instantaneamente e o próximo polling reverte se o backend falhar.
+- **5 novos testes pytest** (`backend/tests/test_disparos_worker.py`): worker
+  processa e conclui (contadores exatos, 1 erro a cada 10), **pausa gravada
+  durante o `sleep` interrompe o loop** (corrida tratada — pegou e fixou um bug
+  real onde o upsert sobrescrevia a pausa), retomada não reenvia, rota "ativa"
+  dispara o background e rota "pausada" não dispara. Suíte: **88 passed**.
+
 ## [0.1.28] — 2026-11-09
 
 ### Corrigido

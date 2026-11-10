@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { Campanha, Lead } from '../lib/types';
 import { ETAPAS, ETAPA_LABEL } from '../lib/types';
@@ -33,13 +33,15 @@ export function Disparos() {
     carregarLeads().catch((e) => toast('erro', e.message));
   }, [carregarLeads, toast]);
 
-  // Polling gerenciado pelo TanStack Query (0.1.02): sonda a cada 4s enquanto
-  // existir campanha ativa; cleanup e pausa em aba oculta automáticos.
+  // Polling gerenciado pelo TanStack Query: sonda a cada 2s enquanto existir
+  // campanha em execução — a barra de progresso reflete os contadores que o
+  // motor em background está gravando em campaigns.json (Efeito Zeigarnik).
+  const queryClient = useQueryClient();
   const { data: campanhas = [], refetch: recarregarCampanhas } = useQuery<Campanha[]>({
     queryKey: ['campanhas'],
     queryFn: () => api.campanhas.listar(),
     refetchInterval: (query) =>
-      query.state.data?.some((c) => c.status === 'em_andamento') ? 4000 : false,
+      query.state.data?.some((c) => c.status === 'em_andamento') ? 2000 : false,
     refetchIntervalInBackground: false,
   });
 
@@ -79,12 +81,22 @@ export function Disparos() {
   };
 
   const alterarStatus = async (campanha: Campanha, status: 'ativa' | 'pausada' | 'rascunho') => {
+    // Otimista: a UI responde instantaneamente (controle do usuário); se o
+    // backend falhar, o próximo polling (2s) reverte com a verdade do JSON.
+    queryClient.setQueryData<Campanha[]>(['campanhas'], (atual) =>
+      (atual ?? []).map((c) =>
+        c.id === campanha.id
+          ? { ...c, status: status === 'ativa' ? 'em_andamento' : status === 'pausada' ? 'pausada' : 'rascunho' }
+          : c,
+      ),
+    );
     try {
       await api.campanhas.status(campanha.id, status);
       toast('sucesso', `Campanha "${campanha.nome}" → ${status === 'ativa' ? 'Ativa' : status === 'pausada' ? 'Pausada' : 'Rascunho'}.`);
       await recarregarCampanhas();
     } catch (e) {
       toast('erro', e instanceof Error ? e.message : 'Falha ao alterar status.');
+      await recarregarCampanhas();
     }
   };
 
@@ -179,7 +191,7 @@ export function Disparos() {
         </div>
       </div>
 
-      {/* Zeigarnik: campanha ativa mostra barra de progresso + spinner */}
+      {/* Zeigarnik: campanha ativa mostra progresso grande + "Processando..." */}
       {campanhas.filter((c) => c.status === 'em_andamento').length > 0 && (
         <div className="space-y-3">
           {campanhas
@@ -188,13 +200,16 @@ export function Disparos() {
               const total = Math.max(campanha.total, campanha.enviadas + campanha.erros);
               const pct = total ? Math.round(((campanha.enviadas + campanha.erros) / total) * 100) : 0;
               return (
-                <div key={campanha.id} className="bg-white rounded-xl shadow-sm border border-indigo-100 p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <div key={campanha.id} className="bg-white rounded-xl shadow-sm border border-indigo-100 p-5 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                       <i className="fas fa-spinner fa-spin text-indigo-500" /> {campanha.nome}
+                      <span className="text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5">
+                        Processando...
+                      </span>
                     </p>
                     <span className="text-xs text-gray-500">
-                      {campanha.enviadas} enviadas · {campanha.erros} erros
+                      {campanha.enviadas} enviadas · {campanha.erros} erros · {total - campanha.enviadas - campanha.erros} restantes
                     </span>
                   </div>
                   <ProgressBar valor={pct} mostrarLabel />

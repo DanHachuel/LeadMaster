@@ -5,6 +5,7 @@
 - **Webhooks**: eventos locais disparados para a URL configurada.
 """
 
+import asyncio
 import threading
 import time
 
@@ -188,6 +189,108 @@ def _executar_campanha(campaign_id: str) -> None:
     storage.upsert_campaign(campaign)
     disparar_webhook("campanha.concluida", {"campanha_id": campaign_id, "nome": campaign["nome"]})
     _CONTROLES.pop(campaign_id, None)
+
+
+# ---------------------------------------------------------------------------
+# Motor de disparos — execução em background (simulação de envio)
+# ---------------------------------------------------------------------------
+
+# Delay entre "envios" simulados: 1s dá tempo real de ver a barra de progresso
+# mover na tela (Efeito Zeigarnik). Testes injetam 0.
+SIM_DELAY_SEGUNDOS = 1.0
+
+# Um erro simulado a cada N envios — proporção realista para a UI.
+SIM_ERRO_A_CADA = 10
+
+
+async def processar_campanha_em_background(campaign_id: str, delay_segundos: float | None = None) -> None:
+    """Processa os leads de uma campanha ATIVA em background (simulação).
+
+    - Itera pelos `lead_ids` da campanha (o filtro por etapa já foi aplicado
+      na criação); leads já enviados em rodadas anteriores são pulados, então
+      pausar e reativar CONTINUA de onde parou.
+    - A cada ciclo o registro é RELIDO do storage e os contadores são
+      mergeados sobre essa cópia fresca: uma pausa/parada gravada durante o
+      `sleep` (ou durante o envio) nunca é sobrescrita pelo worker — o loop é
+      interrompido no ciclo seguinte (controle instantâneo do usuário, sem
+      corromper campaigns.json: lock de threading + escrita atômica).
+    - `await asyncio.sleep(delay)` entre envios (1s padrão = tempo real de
+      visualização na barra de progresso); 1 em cada 10 leads gera erro
+      simulado.
+    - Ao final, status → "concluida" (webhook `campanha.concluida`).
+    """
+    delay = SIM_DELAY_SEGUNDOS if delay_segundos is None else float(delay_segundos)
+    campanha = storage.get_campaign(campaign_id)
+    if not campanha:
+        return
+
+    if campanha.get("status") != "em_andamento":
+        campanha["status"] = "em_andamento"
+    campanha.setdefault("iniciada_em", storage.now_iso())
+    campanha.setdefault("enviadas", 0)
+    campanha.setdefault("erros", 0)
+    campanha.setdefault("eventos", [])
+    campanha["total"] = len(campanha.get("lead_ids", []))
+    storage.upsert_campaign(campanha)
+
+    leads = {l["id"]: l for l in storage.list_leads()}
+    eventos = list(campanha.get("eventos", []))
+    enviadas = int(campanha.get("enviadas", 0))
+    erros = int(campanha.get("erros", 0))
+    ja_enviados = {e.get("lead_id") for e in eventos if e.get("status") == "enviado"}
+
+    def _gravar(fresco: dict, status: str | None = None) -> dict:
+        """Merge dos contadores sobre a cópia fresca do disco — nunca
+        sobrescreve pausa/parada gravadas por outra rota durante a escrita."""
+        novo = dict(fresco)
+        novo["enviadas"] = enviadas
+        novo["erros"] = erros
+        novo["eventos"] = eventos
+        if status:
+            novo["status"] = status
+        return storage.upsert_campaign(novo)
+
+    for indice, lead_id in enumerate(campanha.get("lead_ids", []), start=1):
+        # Releitura a cada ciclo: pausar/parar responde no próximo ciclo.
+        fresco = storage.get_campaign(campaign_id)
+        if not fresco:
+            return
+        if fresco.get("status") != "em_andamento":
+            _gravar(fresco)
+            return
+        if lead_id in ja_enviados:
+            continue
+
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+        # A pausa pode ter chegado DURANTE o sleep: relê antes de gravar.
+        fresco = storage.get_campaign(campaign_id) or fresco
+        if fresco.get("status") != "em_andamento":
+            _gravar(fresco)
+            return
+
+        momento = storage.now_iso()
+        lead = leads.get(lead_id)
+        if not lead:
+            erros += 1
+            eventos.append({"lead_id": lead_id, "status": "erro", "mensagem": "Lead removido da base.", "momento": momento})
+        elif indice % SIM_ERRO_A_CADA == 0:
+            erros += 1
+            eventos.append({"lead_id": lead_id, "status": "erro", "mensagem": "Falha simulada de envio (1 a cada 10).", "momento": momento})
+        else:
+            mensagem = render_template(campanha.get("mensagem") or "", lead)
+            enviadas += 1
+            eventos.append({"lead_id": lead_id, "status": "enviado", "mensagem": mensagem[:120], "momento": momento})
+            ja_enviados.add(lead_id)
+        _gravar(fresco)
+
+    # Fim: merge dos contadores + conclusão sobre o registro fresco do disco.
+    fresco_final = storage.get_campaign(campaign_id) or campanha
+    final = _gravar(fresco_final, status="concluida")
+    final["concluida_em"] = storage.now_iso()
+    storage.upsert_campaign(final)
+    disparar_webhook("campanha.concluida", {"campanha_id": campaign_id, "nome": final.get("nome", "")})
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -435,8 +435,15 @@ def criar_campanha(campaign_in: CampaignIn):
 
 
 @app.put("/api/campaigns/{campaign_id}/status")
-def alterar_status_campanha(campaign_id: str, dados: dict):
-    """Altera o status de uma campanha (rascunho/ativa/pausada/concluida)."""
+def alterar_status_campanha(campaign_id: str, dados: dict, background_tasks: BackgroundTasks):
+    """Altera o status de uma campanha (rascunho/ativa/pausada/concluida).
+
+    "ativa" (alias de em_andamento) DISPARA o motor de simulação em background
+    — a cada envio os contadores sobem em campaigns.json e a UI reflete na
+    barra de progresso. Reativar uma campanha concluída zera os contadores
+    (nova rodada); reativar uma pausada continua de onde parou (leads já
+    enviados são pulados). Pausar/parar responde no próximo ciclo do worker.
+    """
     status = (dados.get("status") or "").strip().lower()
     # Aliases aceitos: "ativa" equivale a "em_andamento" no ciclo interno.
     aliases = {"ativa": "em_andamento", "em_andamento": "em_andamento", "pausada": "pausada", "pausado": "pausada", "rascunho": "rascunho", "concluida": "concluida"}
@@ -446,8 +453,23 @@ def alterar_status_campanha(campaign_id: str, dados: dict):
     campaign = storage.get_campaign(campaign_id)
     if not campaign:
         raise HTTPException(404, "Campanha não encontrada.")
-    campaign["status"] = interno
-    storage.upsert_campaign(campaign)
+
+    if interno == "em_andamento":
+        if campaign.get("status") == "concluida":
+            # Nova rodada: zera métricas e eventos da execução anterior.
+            campaign.update({"enviadas": 0, "erros": 0, "eventos": [], "concluida_em": None})
+        campaign["status"] = "em_andamento"
+        campaign.setdefault("iniciada_em", storage.now_iso())
+        campaign.setdefault("enviadas", 0)
+        campaign.setdefault("erros", 0)
+        campaign.setdefault("eventos", [])
+        campaign["total"] = len(campaign.get("lead_ids", []))
+        storage.upsert_campaign(campaign)
+        # Motor em background: a resposta volta na hora; os envios sobem depois.
+        background_tasks.add_task(agents.processar_campanha_em_background, campaign_id)
+    else:
+        campaign["status"] = interno
+        storage.upsert_campaign(campaign)
     return campaign
 
 
