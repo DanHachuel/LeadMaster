@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import type { Etapa, Lead, SugestaoCrm } from '../lib/types';
 import { ETAPAS, ETAPA_LABEL } from '../lib/types';
 import { KanbanBoard } from '../components/KanbanBoard';
+import { corTag } from '../components/KanbanCard';
 import { Modal } from '../components/Modal';
 import { Accordion } from '../components/Accordion';
 import { StatusBadge } from '../components/StatusBadge';
@@ -24,8 +25,12 @@ export function CRM() {
   const [telefoneEdit, setTelefoneEdit] = useState('');
   const [emailEdit, setEmailEdit] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [tagsEdit, setTagsEdit] = useState<string[]>([]);
+  const [novaTag, setNovaTag] = useState('');
+  const [scoreEdit, setScoreEdit] = useState(0);
   const [busca, setBusca] = useState('');
   const [exportando, setExportando] = useState(false);
+  const [tagFiltro, setTagFiltro] = useState('');
 
   const carregar = useCallback(async () => {
     setLeads(await api.crm.leadsListar());
@@ -42,6 +47,8 @@ export function CRM() {
     setNomeEdit(editando.nome || '');
     setTelefoneEdit(editando.telefone || '');
     setEmailEdit(editando.email || '');
+    setTagsEdit([...(editando.tags || [])]);
+    setScoreEdit(editando.score ?? 0);
   }, [editando]);
 
   const mover = async (leadId: string, para: Etapa) => {
@@ -106,7 +113,50 @@ export function CRM() {
     }
   };
 
-  const salvarDetalhes = async () => {    if (!editando) return;
+  // Auto-save de tags/score (feedback imediato; falha reverte via toast).
+  const salvarTags = async (tags: string[]) => {
+    if (!editando) return;
+    const anteriores = tagsEdit;
+    setTagsEdit(tags);
+    try {
+      const atualizado = await api.crm.editarLead(editando.id, { tags });
+      setLeads((atuais) => atuais.map((l) => (l.id === editando.id ? { ...l, ...atualizado } : l)));
+      setEditando((atual) => (atual ? { ...atual, ...atualizado } : atual));
+    } catch (e) {
+      setTagsEdit(anteriores);
+      toast('erro', e instanceof Error ? e.message : 'Falha ao salvar tags.');
+    }
+  };
+
+  const salvarScore = async (score: number) => {
+    if (!editando) return;
+    const anterior = scoreEdit;
+    setScoreEdit(score);
+    try {
+      const atualizado = await api.crm.editarLead(editando.id, { score });
+      setLeads((atuais) => atuais.map((l) => (l.id === editando.id ? { ...l, ...atualizado } : l)));
+      setEditando((atual) => (atual ? { ...atual, ...atualizado } : atual));
+    } catch (e) {
+      setScoreEdit(anterior);
+      toast('erro', e instanceof Error ? e.message : 'Falha ao salvar score.');
+    }
+  };
+
+  const adicionarTag = () => {
+    const tag = novaTag.trim();
+    if (!tag) return;
+    if (tagsEdit.some((t) => t.toLowerCase() === tag.toLowerCase())) {
+      toast('erro', 'Esta tag já existe neste lead.');
+      return;
+    }
+    setNovaTag('');
+    salvarTags([...tagsEdit, tag]);
+  };
+
+  const removerTag = (tag: string) => salvarTags(tagsEdit.filter((t) => t !== tag));
+
+  const salvarDetalhes = async () => {
+    if (!editando) return;
     if (!nomeEdit.trim()) {
       toast('erro', 'O nome do lead não pode ficar vazio.');
       return;
@@ -118,7 +168,6 @@ export function CRM() {
         telefone: telefoneEdit.trim(),
         email: emailEdit.trim(),
       });
-      // Observações seguem pela rota genérica de leads (PATCH).
       if (observacoes !== (editando.observacoes || '')) {
         await api.leads.atualizar(editando.id, { observacoes });
       }
@@ -133,17 +182,22 @@ export function CRM() {
     }
   };
 
-  // Busca local instantânea (Nome, Telefone ou Email).
+  // Lista final: filtro por tag (local) + busca textual instantânea.
   const leadsFiltrados = useMemo(() => {
+    let lista = tagFiltro
+      ? leads.filter((l) => (l.tags || []).some((t) => t.toLowerCase() === tagFiltro.toLowerCase()))
+      : leads;
     const termo = busca.trim().toLowerCase();
-    if (!termo) return leads;
-    return leads.filter(
-      (l) =>
-        l.nome.toLowerCase().includes(termo) ||
-        (l.telefone || '').includes(termo) ||
-        (l.email || '').toLowerCase().includes(termo),
-    );
-  }, [leads, busca]);
+    if (termo) {
+      lista = lista.filter(
+        (l) =>
+          l.nome.toLowerCase().includes(termo) ||
+          (l.telefone || '').includes(termo) ||
+          (l.email || '').toLowerCase().includes(termo),
+      );
+    }
+    return lista;
+  }, [leads, busca, tagFiltro]);
 
   const exportarCsv = async () => {
     setExportando(true);
@@ -169,6 +223,13 @@ export function CRM() {
     () => Object.fromEntries(ETAPAS.map((e) => [e, leads.filter((l) => l.etapa === e).length])) as Record<Etapa, number>,
     [leads],
   );
+
+  // Todas as tags existentes na base (para o dropdown de filtro).
+  const todasTags = useMemo(() => {
+    const conjunto = new Set<string>();
+    for (const l of leads) for (const t of l.tags || []) conjunto.add(t);
+    return [...conjunto].sort((a, b) => a.localeCompare(b));
+  }, [leads]);
 
   return (
     <div className="space-y-6">
@@ -229,6 +290,18 @@ export function CRM() {
             <i className="fas fa-times" />
           </button>
         )}
+        <select
+          value={tagFiltro}
+          onChange={(e) => setTagFiltro(e.target.value)}
+          className="text-sm bg-white border border-gray-200 rounded-lg shadow-sm px-3 py-2.5 focus:ring-2 focus:ring-indigo-400 outline-none"
+        >
+          <option value="">Todas as tags</option>
+          {todasTags.map((tag) => (
+            <option key={tag} value={tag}>
+              {tag}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Zeigarnik: busca sem resultados mostra mensagem amigável */}
@@ -397,6 +470,68 @@ export function CRM() {
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
                   placeholder="Ex.: ligou pedindo proposta, retorna na sexta..."
                 />
+              </div>
+            </div>
+
+            {/* Tags (von Restorff: "Quente"/"Urgente" em cores vibrantes) */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-2">Tags</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {tagsEdit.length === 0 && <span className="text-xs text-gray-400">Nenhuma tag ainda.</span>}
+                {tagsEdit.map((tag) => (
+                  <span
+                    key={tag}
+                    className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded ${corTag(tag)}`}
+                  >
+                    {tag}
+                    <button onClick={() => removerTag(tag)} className="opacity-60 hover:opacity-100" aria-label={`Remover tag ${tag}`}>
+                      <i className="fas fa-times text-[9px]" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={novaTag}
+                  onChange={(e) => setNovaTag(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && adicionarTag()}
+                  placeholder="Nova tag (ex.: Quente, Urgente)"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
+                />
+                <button
+                  onClick={adicionarTag}
+                  className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+                >
+                  <i className="fas fa-plus" />
+                </button>
+              </div>
+            </div>
+
+            {/* Score — estrelas clicáveis grandes (Lei de Fitts) */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-2">Prioridade do lead (0–5 estrelas)</label>
+              <div className="flex items-center gap-1.5">
+                {[1, 2, 3, 4, 5].map((estrela) => (
+                  <button
+                    key={estrela}
+                    onClick={() => salvarScore(scoreEdit === estrela ? 0 : estrela)}
+                    title={`${estrela} estrela${estrela > 1 ? 's' : ''}`}
+                    className="p-1 group"
+                    aria-label={`Definir score ${estrela}`}
+                  >
+                    <i
+                      className={cn(
+                        'fas fa-star text-2xl transition-transform group-hover:scale-110',
+                        scoreEdit >= estrela ? 'text-amber-400' : 'text-gray-200 hover:text-amber-200',
+                      )}
+                    />
+                  </button>
+                ))}
+                {scoreEdit > 0 && (
+                  <button onClick={() => salvarScore(0)} className="ml-2 text-xs text-gray-400 hover:text-gray-600">
+                    limpar
+                  </button>
+                )}
               </div>
             </div>
 

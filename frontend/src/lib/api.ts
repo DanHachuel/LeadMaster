@@ -74,7 +74,7 @@ export const api = {
 
   // CRM (Kanban: leads por etapa + agente de sugestões)
   crm: {
-    leadsListar: () => req<Lead[]>('/crm/leads'),
+    leadsListar: (tag?: string) => req<Lead[]>(tag ? `/crm/leads?tag=${encodeURIComponent(tag)}` : '/crm/leads'),
     criarLead: (lead: Partial<Lead>) => req<Lead>('/crm/leads', corpo(lead)),
     editarLead: (id: string, dados: Partial<Lead>) =>
       req<Lead>(`/crm/leads/${id}`, { method: 'PUT', body: JSON.stringify(dados) }),

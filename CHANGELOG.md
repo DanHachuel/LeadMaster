@@ -37,6 +37,28 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.35] — 2026-11-10
+
+### Adicionado
+
+- **Tags e Lead Scoring (qualificação no CRM):**
+  - `PUT /api/crm/leads/{id}` agora aceita **`tags`** (lista) e **`score`** (inteiro
+    0–5); score fora do intervalo ou tags em formato inválido → **400**.
+  - `GET /api/crm/leads?tag=<nome>` filtra apenas leads com a tag informada.
+  - **Card do Kanban:** tags como badges coloridos abaixo do nome (cores
+    vibrantes para **Quente** — vermelho, **Urgente** — laranja, **Morno** — âmbar,
+    **Frio** — azul; demais em indigo — von Restorff) e **estrelas do score**
+    (preenchidas/vazias) no canto superior direito.
+  - **Modal de detalhes:** campo "Nova Tag" + botão **"+"**, tags existentes com
+    **"X"** para remover (auto-save imediato) e **estrelas 1–5 clicáveis e
+    grandes** (Lei de Fitts) para o score — clicar de novo na mesma estrela
+    zera; "limpar" disponível; erro no salvamento reverte com toast.
+  - **Dropdown de filtro por tag** ao lado da barra de busca (todas as tags da
+    base, ordenadas), combinando com a busca textual instantânea.
+- **6 novos testes pytest** (`backend/tests/test_tags_score.py`): persistência de
+  tags e score, score inválido (400), tags em formato inválido (400), filtro por
+  tag e filtro sem resultados. Suíte completa: **109 passed**.
+
 ## [0.1.34] — 2026-11-10
 
 ### Adicionado

@@ -319,9 +319,15 @@ def aplicar_sugestao(dados: dict):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/crm/leads")
-def crm_listar_leads():
-    """Todos os leads (persistidos em leads.json) — usado pelo quadro Kanban."""
-    return storage.list_leads()
+def crm_listar_leads(tag: str | None = None):
+    """Todos os leads (persistidos em leads.json) — usado pelo quadro Kanban.
+
+    ?tag=nome filtra apenas leads que possuem a tag informada.
+    """
+    leads = storage.list_leads()
+    if tag:
+        leads = [l for l in leads if tag.strip().lower() in [str(t).strip().lower() for t in (l.get("tags") or [])]]
+    return leads
 
 
 @app.post("/api/crm/leads", status_code=201)
@@ -401,14 +407,25 @@ def crm_exportar_leads_csv():
 def crm_editar_lead(lead_id: str, dados: dict):
     """Edita os dados principais do lead (modal de detalhes do CRM).
 
-    Payload aceita qualquer subconjunto de {nome, telefone, email, ...}; o nome,
-    quando presente, não pode ficar vazio (prevenção de erros).
+    Payload aceita qualquer subconjunto de {nome, telefone, email, tags, score};
+    o nome, quando presente, não pode ficar vazio (prevenção de erros) e o score
+    deve ser inteiro de 0 a 5.
     """
     if "nome" in dados and not str(dados.get("nome") or "").strip():
         raise HTTPException(400, "O nome do lead não pode ficar vazio.")
-    patch = {k: v for k, v in dados.items() if k in ("nome", "telefone", "email")}
+    patch = {k: v for k, v in dados.items() if k in ("nome", "telefone", "email", "tags")}
+    if "score" in dados:
+        try:
+            score = int(dados["score"])
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Score deve ser um inteiro de 0 a 5.")
+        if not 0 <= score <= 5:
+            raise HTTPException(400, "Score deve ser um inteiro de 0 a 5.")
+        patch["score"] = score
+    if "tags" in dados and not isinstance(dados["tags"], list):
+        raise HTTPException(400, "Tags deve ser uma lista de textos.")
     if not patch:
-        raise HTTPException(400, "Nenhum campo editável informado (nome, telefone, email).")
+        raise HTTPException(400, "Nenhum campo editável informado (nome, telefone, email, tags, score).")
     atualizado = storage.update_lead(lead_id, patch)
     if not atualizado:
         raise HTTPException(404, "Lead não encontrado.")
