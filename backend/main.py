@@ -933,6 +933,20 @@ def whatsapp_qr():
     return Response(content=conteudo, media_type=content_type)
 
 
+class WhatsappTesteIn(BaseModel):
+    telefone: str = Field(min_length=8)
+    mensagem: str = Field(min_length=1)
+
+
+@app.post("/api/whatsapp/test-send")
+def whatsapp_teste_envio(dados: WhatsappTesteIn):
+    """Envia uma mensagem de teste pelo gateway (validação da conexão)."""
+    try:
+        return whatsapp.enviar_texto(dados.telefone, dados.mensagem)
+    except whatsapp.GatewayErro as e:
+        raise HTTPException(503, str(e))
+
+
 # ---------------------------------------------------------------------------
 # Webhook
 # ---------------------------------------------------------------------------

@@ -172,6 +172,8 @@ export const api = {
     status: () => req<{ estado: string; bruto: string; numero: string; gateway_url: string }>('/whatsapp/status'),
     conectar: () => req<{ ok: boolean; status_http?: number }>('/whatsapp/sessions/start', corpo({})),
     qrUrl: () => '/api/whatsapp/qr',
+    testeEnvio: (telefone: string, mensagem: string) =>
+      req<{ ok: boolean; chat_id?: string }>('/whatsapp/test-send', corpo({ telefone, mensagem })),
   },
 
   // Webhook

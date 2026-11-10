@@ -108,3 +108,21 @@ def test_sem_gateway_mantem_simulacao(client):
     asyncio.run(main.agents.processar_campanha_em_background(campanha["id"], delay_segundos=0))
     gravada = main.storage.get_campaign(campanha["id"])
     assert gravada["enviadas"] == 1
+
+
+def test_teste_envio_rota(client):
+    _configurar_gateway(client)
+    with patch.object(main.whatsapp.httpx, "post", return_value=httpx.Response(200, json={"ok": True})) as post_mock:
+        r = client.post("/api/whatsapp/test-send", json={"telefone": "(11) 99999-8888", "mensagem": "Olá teste"})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert r.json()["chat_id"] == "5511999998888@c.us"
+    assert "send-text" in post_mock.call_args[0][0]
+
+
+def test_teste_envio_gateway_offline_503(client):
+    _configurar_gateway(client)
+    with patch.object(main.whatsapp.httpx, "post", side_effect=httpx.ConnectError("offline")):
+        r = client.post("/api/whatsapp/test-send", json={"telefone": "(11) 99999-8888", "mensagem": "Oi"})
+    assert r.status_code == 503
+    assert "2785" in r.json()["detail"]

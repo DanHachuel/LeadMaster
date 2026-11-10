@@ -37,6 +37,28 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.34] — 2026-11-10
+
+### Adicionado
+
+- **Conexões — ajuste fino do gateway WhatsApp:**
+  - **Instruções passo a passo** em accordion (Lei de Hick) quando desconectado:
+    subir o OpenWA/WAHA (ex.: `docker run -p 2785:2785 openwa`), informar URL e
+    API Key em Ferramentas, clicar em "Conectar WhatsApp" e escanear o QR.
+  - **QR Code em moldura branca com margem** (leitura pela câmera) +
+    **contador regressivo de validade** e barra de progresso do refresh
+    (Zeigarnik); a imagem é renovada a cada 10s enquanto o modal está aberto.
+  - **Botão verde "Enviar Mensagem de Teste"** (von Restorff) quando conectado:
+    mini-modal com número (com DDD) e mensagem, enviando pela nova rota
+    `POST /api/whatsapp/test-send` — valida o gateway de ponta a ponta.
+  - **Prevenção de erros:** gateway offline (503) na conexão ou no teste exibe
+    **Prevenção de erros:** gateway offline (503) na conexão ou no teste exibe
+    toast *"Gateway do WhatsApp não encontrado. Verifique se o OpenWA está
+    rodando."* — o card de status também passa a mostrar essa orientação.
+- **3 novos testes pytest** (`test_whatsapp_gateway.py`): rota de teste de envio
+  (payload `chatId` + rota `send-text`), gateway offline no teste (503 com a URL)
+  e simulação do worker preservada. Suíte completa: **103 passed**.
+
 ## [0.1.33] — 2026-11-10
 
 ### Alterado (refatoração críticâ de arquitetura)
