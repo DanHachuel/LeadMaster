@@ -37,29 +37,52 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.27] — 2026-11-09
+
+### Corrigido (crítico)
+
+- **Launcher — Dummy Server (keep-alive infalível):** as versões anteriores
+  dependiam de `stdin`/timers; quando o MobaXterm fecha a entrada padrão em EOF
+  (perda de foco/variação de PTY), o event loop do Node esvaziava e o prompt
+  voltava logo após "LeadMaster no ar", derrubando o uvicorn junto. Agora o
+  `cmdStart` cria, **logo após o spawn do Python**, um servidor HTTP inativo
+  (`http.createServer` + `keepAliveServer.listen(0, '127.0.0.1')`) — o socket
+  aberto no sistema operacional segura o processo **independentemente do
+  terminal**; o fluxo principal termina em `await new Promise(() => {})`
+  (congelado para sempre) e `stdin.resume`/`setInterval`/`beforeExit` seguem
+  como camadas secundárias. **Testado ao vivo com stdin em EOF (`< NUL`):**
+  node vivo 1min46s+, health 200, exportação CSV 200 no ar, encerramento
+  limpo, zero órfãos.
+- **AGENTS.md:** regra 1 do launcher passa a ser o Dummy Server (camada
+  principal); regra 2 rebaixa stdin/timers a camadas secundárias.
+- **Gates de regressão reforçados** (`test_launcher_protections.py`): falham se
+  `http.createServer`, `keepAliveServer.listen(0, '127.0.0.1')` ou
+  `await new Promise(() => {})` desaparecerem do corpo do `cmdStart`.
+  Suíte completa: **83 passed**.
+
 ## [0.1.26] — 2026-11-09
 
 ### Adicionado
 
-- **Busca no CRM e exportação CSV:**
-  - `GET /api/crm/leads/export`: gera CSV de todos os leads com **BOM UTF-8**
-    (`\ufeff`, para o Excel em português não quebrar acentos), delimiter `;`,
-    `Content-Type: text/csv; charset=utf-8` e
-    `Content-Disposition: attachment; filename="leads_leadmaster.csv"`. Campos
-    de `extras` são **achatados** como colunas `extras_<chave>` (união das
-    chaves existentes) e listas (tags) viram células separadas por `; `.
-  - Frontend: **barra de busca larga** no topo do CRM com filtragem local
-    instantânea por **Nome, Telefone ou Email** + botão de limpar; **botão
-    "Exportar CSV"** em estilo **neutro** (outline — não compete com o
-    "Adicionar Lead" em gradiente, von Restorff) que baixa o arquivo via blob;
-    busca sem resultados mostra aviso amigável *"Nenhum lead encontrado para
-    '...'"* (Zeigarnik).
-- **Corrigido (pego pelos novos testes):** o modelo `LeadIn` descartava o campo
-  `extras` — leads criados manualmente perdiam site/avaliação. Agora o POST de
-  leads preserva `extras`.
-- **3 novos testes pytest** (`backend/tests/test_leads_export.py`): MIME +
-  disposition + BOM + colunas, achatamento de `extras` e exportação de base
-  vazia (só cabeçalho).
+- **Busca no CRM e exportação CSV** (registro retro-ativo — publicada sem
+  entrada anterior):
+  - `GET /api/crm/leads/export`: CSV de todos os leads com **BOM UTF-8**
+    (`\ufeff`, Excel em português não quebra acentos), delimitador `;`,
+    `text/csv; charset=utf-8` e
+    `Content-Disposition: attachment; filename="leads_leadmaster.csv"`; campos
+    de `extras` **achatados** como colunas `extras_<chave>` e listas (tags) em
+    células separadas por `; `.
+  - Frontend: **barra de busca larga** no CRM com filtragem local instantânea
+    por **Nome, Telefone ou Email** + botão de limpar (Lei de Fitts); botão
+    **"Exportar CSV"** em estilo **neutro/outline** — não compete com o
+    "Adicionar Lead" em gradiente (von Restorff); busca sem resultados mostra
+    *"Nenhum lead encontrado para '...'"* (Zeigarnik).
+  - **Corrigido:** o modelo `LeadIn` descartava o campo `extras` — leads
+    criados manualmente perdiam site/avaliação. Agora o POST preserva
+    `extras` (`LeadIn.extras: dict`).
+  - **3 novos testes pytest** (`backend/tests/test_leads_export.py`): MIME +
+    disposition + BOM + colunas, achatamento de `extras` e exportação de base
+    vazia (só cabeçalho).
 
 ## [0.1.25] — 2026-11-09
 

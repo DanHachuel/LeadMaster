@@ -175,21 +175,26 @@ indigo/purple apenas na ação principal.
 O launcher (`scripts/cli.mjs`) NÃO pode ser alterado de forma a remover estas seis
 proteções — elas impedem o encerramento silencioso do LeadMaster no Windows:
 
-1. **Keep-alive:** o launcher DEVE conter `setInterval(() => {}, 1000);` para manter o
-   event loop ativo mesmo sem streams de I/O de console.
-2. **Terminal preso (solução definitiva):** a linha `process.stdin.resume();` DEVE
+1. **Dummy Server (keep-alive infalível):** o launcher DEVE criar, no fluxo do
+   `cmdStart` e logo após o spawn do worker Python, um servidor HTTP inativo
+   (`http.createServer(...)` + `keepAliveServer.listen(0, '127.0.0.1')`) — o
+   socket aberto no sistema operacional segura o event loop do Node mesmo que o
+   terminal feche o stdin (EOF no MobaXterm), que o wrapper do npx feche os
+   streams ou que timers falhem. A referência ao servidor DEVE permanecer em
+   memória. Como reforço, o fluxo principal termina em
+   `await new Promise(() => {})` (congelado para sempre).
+2. **Terminal preso:** a linha `process.stdin.resume();` DEVE
    estar presente no `cli.mjs`, dentro do fluxo do `cmdStart` e **após** o spawn
-   bem-sucedido do worker Python (nunca no `install` nem em função morta) — o
-   processo Node permanece indefinidamente vivo ouvindo a entrada padrão, o prompt
-   do MobaXterm nunca é devolvido e a PTY (e com ela o uvicorn) não é fechada.
-   `setInterval(() => {}, 1000);` atua como segunda camada e **rede de segurança**:
-   `process.on('beforeExit')` re-arma o timer se o event loop esvaziar, e erros do
-   stream de stdin são ignorados. O launcher NUNCA deve chamar `process.exit(0)`
-   após o sucesso da inicialização (sai naturalmente ou pelos listeners do filho);
-   chamadas de `process.exit` residem apenas em caminhos de erro acionável, na
-   parada legítima (`SIGTERM`/`SIGBREAK`) e no aviso informativo "já está rodando".
-   O worker Python nunca é criado com `.unref()`; a morte do filho encerra o
-   launcher (`child.on('close')`) e vice-versa (`process.on('exit')`).
+   bem-sucedido do worker Python (nunca no `install` nem em função morta) — camada
+   SECUNDÁRIA (a principal é o Dummy Server da regra 1). `setInterval` e o
+   `beforeExit` (que re-arma o timer se o loop esvaziar) completam as camadas, e
+   erros do stream de stdin são ignorados. O launcher NUNCA deve chamar
+   `process.exit(0)` após o sucesso da inicialização (sai naturalmente ou pelos
+   listeners do filho); chamadas de `process.exit` residem apenas em caminhos de
+   erro acionável, na parada legítima (`SIGTERM`/`SIGBREAK`) e no aviso
+   informativo "já está rodando". O worker Python nunca é criado com `.unref()`;
+   a morte do filho encerra o launcher (`child.on('close')`) e vice-versa
+   (`process.on('exit')`).
 3. **Absorção de sinais no Windows:** `SIGINT` e `SIGHUP` DEVEM ser absorvidos no
    Windows (apenas log `"[LAUNCHER] Sinal absorvido..."`, sem `stop()`/`exit()`) — o
    MobaXterm os envia de forma espúria (perda de foco, minimização). `SIGTERM` e

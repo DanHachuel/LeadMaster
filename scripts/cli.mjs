@@ -672,11 +672,10 @@ function cmdStart(args) {
     }
 
     // -------------------------------------------------------------------------
-    // Sinais (regra inviolável do AGENTS.md)
-    // MobaXterm envia SIGINT/SIGHUP espúrios (perda de foco, minimização): no
-    // Windows esses sinais são APENAS ABSORVIDOS (log), sem encerrar o launcher,
-    // para o app não morrer sozinho. SIGTERM e SIGBREAK são paradas legítimas e
-    // sempre encerram. No Linux/macOS, SIGINT/SIGHUP mantêm o stop gracioso.
+    // Camadas SECUNDÁRIAS de keep-alive (o Dummy Server acima é a principal):
+    // setInterval mantém o loop ativo, stdin.resume ouve digitação, e o
+    // beforeExit re-arma o timer se o loop esvaziar. Erros de stdin são
+    // ignorados — nenhum deles pode derrubar o launcher.
     // -------------------------------------------------------------------------
     const ehWindows = platform() === 'win32';
     const naoAbsorver = () => { stop(); process.exit(0); };
@@ -691,23 +690,8 @@ function cmdStart(args) {
       process.on('SIGBREAK', naoAbsorver);
     }
 
-    // Keep-alive (regra inviolável do AGENTS.md): mantém o event loop ativo
-    // mesmo sem I/O de console (MobaXterm minimizado / sem stream ativo).
     setInterval(() => {}, 1000);
-
-    // Terminal preso (regra inviolável do AGENTS.md) — SOLUÇÃO DEFINITIVA:
-    // ao retomar a entrada padrão IMEDIATAMENTE antes das mensagens finais
-    // de sucesso, o Node permanece vivo indefinidamente aguardando qualquer
-    // digitação do usuário. O prompt do MobaXterm NUNCA é devolvido e a PTY
-    // (e com ela o uvicorn) não é fechada. Esta linha NÃO depende de timers
-    // nem de npx — NUNCA REMOVER.
     process.stdin.resume();
-
-    // Rede de segurança (regra inviolável do AGENTS.md): se o event loop
-    // esvaziar (stdin em EOF, timer perdido, qualquer surpresa do terminal/
-    // PTY do MobaXterm), o Node re-ativa o keep-alive no 'beforeExit' em vez
-    // de encerrar — o prompt NUNCA é devolvido e o uvicorn não fica órfão.
-    // Erros no stream de stdin também nunca derrubam o launcher.
     process.stdin.on('error', () => {});
     process.on('beforeExit', () => {
       setInterval(() => {}, 1000);
@@ -721,6 +705,12 @@ function cmdStart(args) {
         ? 'ℹ Para encerrar: Ctrl+Break ou feche a janela (Ctrl+C é absorvido no Windows contra sinais espúrios do MobaXterm).'
         : 'ℹ Para encerrar: Ctrl+C.',
     );
+
+    // Congela o fluxo principal PARA SEMPRE (regra inviolável): a promessa
+    // nunca resolve, então nenhum código posterior pode rodar e nenhum exit
+    // "natural" acontece. A saída acontece somente pelo ciclo de vida do
+    // filho (Python morre) ou por SIGTERM/SIGBREAK — ambos com log.
+    await new Promise(() => {});
   })().catch((err) => {
     console.error('✗ Erro inesperado ao iniciar:', err && err.message ? err.message : err);
     process.exit(1);

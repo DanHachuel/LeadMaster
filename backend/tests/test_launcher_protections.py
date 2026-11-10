@@ -54,13 +54,18 @@ class TestLauncherProtections:
         assert "já está rodando" not in c
 
     def test_keepalive_no_fluxo_do_start(self):
-        # Gate de FLUXO (regressão da 0.1.21): as proteções precisam existir
-        # dentro do cmdStart — no install, em função morta ou em bloco errado
-        # não valem. A morte prematura do Node devolve o prompt do MobaXterm.
+        # Gate de FLUXO (regressões da 0.1.21/0.1.24): as proteções precisam
+        # existir dentro do cmdStart — no install, em função morta ou em bloco
+        # errado não valem. A morte prematura do Node devolve o prompt do
+        # MobaXterm. A camada PRINCIPAL é o Dummy Server (socket do SO);
+        # setInterval/stdin/beforeExit são secundárias.
         corpo = _corpo_cmd_start()
         assert "spawn(" in corpo  # worker Python é spawnado no start
-        assert "process.stdin.resume();" in corpo  # terminal preso
-        assert "setInterval(() => {}, 1000)" in corpo  # keep-alive
+        assert "http.createServer" in corpo  # Dummy Server: camada principal
+        assert "keepAliveServer.listen(0, '127.0.0.1')" in corpo
+        assert "await new Promise(() => {})" in corpo  # fluxo principal congelado
+        assert "process.stdin.resume();" in corpo  # camada secundária
+        assert "setInterval(() => {}, 1000)" in corpo  # camada secundária
         assert "beforeExit" in corpo  # rede de segurança do event loop
         assert "child.on('exit'" in corpo or 'child.on("exit"' in corpo
         assert "child.on('close'" in corpo or 'child.on("close"' in corpo
@@ -69,10 +74,10 @@ class TestLauncherProtections:
     def test_start_nunca_chama_exit_apos_terminal_preso(self):
         # Após o terminal ser preso, nenhum caminho de sucesso chama
         # process.exit — a saída só ocorre pelo ciclo de vida do filho
-        # (child exit/close) ou por sinais de parada legítima.
+        # (child exit/close) ou por sinais de parada legítima (SIGTERM/SIGBREAK).
         corpo = _corpo_cmd_start()
         pos = corpo.index("process.stdin.resume();")
-        fim_iife = corpo.index("})().catch(")  # catch de erro fatal fica de fora
+        fim_iife = corpo.rindex("process.exit(1);")  # catch de erro fatal, no fim
         assert "process.exit(" not in corpo[pos:fim_iife]
 
     def test_ciclo_de_vida_vinculado(self):
