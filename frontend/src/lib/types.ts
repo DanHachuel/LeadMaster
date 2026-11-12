@@ -1,7 +1,6 @@
 // Tipos compartilhados entre frontend e backend (ver backend/services/*.py).
 
 export type Etapa = 'leads' | 'em_contato' | 'proposta' | 'fechado';
-
 export const ETAPAS: Etapa[] = ['leads', 'em_contato', 'proposta', 'fechado'];
 
 export const ETAPA_LABEL: Record<Etapa, string> = {
@@ -120,4 +119,37 @@ export interface ResultadoExtracao {
   leads: Partial<Lead>[];
   comando?: string;
   provedor?: string;
+}
+
+export interface RelatorioResumo {
+  campanhas: number;
+  enviadas: number;
+  erros: number;
+  taxa_sucesso: number;
+  ativas: number;
+  concluidas: number;
+}
+
+export interface RelatorioCampanha {
+  id: string;
+  nome: string;
+  status: string;
+  enviadas: number;
+  erros: number;
+  total: number;
+  iniciada_em?: string | null;
+  concluida_em?: string | null;
+  criado_em?: string | null;
+}
+
+export interface RelatorioDia {
+  dia: string;
+  enviadas: number;
+  erros: number;
+}
+
+export interface Relatorios {
+  resumo: RelatorioResumo;
+  por_campanha: RelatorioCampanha[];
+  por_dia: RelatorioDia[];
 }

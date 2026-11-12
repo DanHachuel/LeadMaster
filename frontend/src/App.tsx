@@ -10,6 +10,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Leads } from './pages/Leads';
 import { CRM } from './pages/CRM';
 import { Disparos } from './pages/Disparos';
+import { Relatorios } from './pages/Relatorios';
 import { Extratores } from './pages/Extratores';
 import { ExtratorMaps } from './pages/ExtratorMaps';
 import { ExtratorInstagram } from './pages/ExtratorInstagram';
@@ -31,6 +32,7 @@ const TITULOS: Record<string, string> = {
   '/extrator-instagram': 'Extrator de Leads — Instagram',
   '/extrator-cnpj': 'Extrator de Leads — CNPJ',
   '/disparos': 'Disparos',
+  '/relatorios': 'Relatórios',
   '/crm': 'CRM — Kanban',
   '/conexoes': 'Conexões',
   '/funil': 'Funil de Prospecção',
@@ -140,6 +142,7 @@ function Layout({
             <Route path="/conexoes" element={<Conexoes />} />
             <Route path="/funil" element={<Funil />} />
             <Route path="/disparos" element={<Disparos />} />
+            <Route path="/relatorios" element={<Relatorios />} />
             <Route path="/extratores" element={<Extratores />} />
             <Route path="/extrator-maps" element={<ExtratorMaps />} />
             <Route path="/extrator-instagram" element={<ExtratorInstagram />} />

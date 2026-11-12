@@ -5,6 +5,7 @@ import type {
   Campanha,
   Lead,
   Metricas,
+  Relatorios,
   ResultadoExtracao,
   SugestaoCrm,
 } from './types';
@@ -59,6 +60,7 @@ export const api = {
 
   // Métricas
   metricas: () => req<Metricas>('/metrics'),
+  relatorios: () => req<Relatorios>('/reports'),
 
   // Leads
   leads: {

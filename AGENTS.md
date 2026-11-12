@@ -170,36 +170,41 @@ indigo/purple apenas na ação principal.
   - saída sempre direcionada a pipes/logs (`stdio` controlado) — nunca janelas
     interativas.
 
-## 🚨 REGRA INVIOLÁVEL: ARQUITETURA DO LAUNCHER (launcher descartável — padrão PandaNews)
+## 🚨 REGRA INVIOLÁVEL: ARQUITETURA DO LAUNCHER (terminal preso — foreground com readline)
 
-O launcher (`scripts/cli.mjs`) adota a arquitetura **"launcher descartável +
-servidor autônomo"**: o Node sobe o servidor, grava o lock e SAI; o servidor
-Python sobrevive ao terminal (prompt devolvido de propósito) e só é encerrado
-por comando explícito (`kill`) ou pelo kill switch do próximo `start`. NÃO
+O launcher (`scripts/cli.mjs`) usa o modelo **foreground**: o servidor sobe com
+`stdio: 'inherit'` (logs em tempo real no terminal) e o launcher fica preso ao
+terminal pelo `readline` — a saída acontece só pelo **Ctrl+C** (`SIGINT` do
+readline, que mata o worker por código) ou por `SIGTERM`/`SIGBREAK`. NÃO
 pode ser alterado de forma a remover estas seis regras:
 
-1. **Spawn destacado com stdio em arquivo:** o worker Python DEVE nascer com
-   `detached: true` (grupo de processos próprio, imune a Ctrl+C do terminal),
-   `windowsHide: true` (nunca janela de console) e **`stdio: ['ignore', logFd,
-   logFd]`** — saída em `<home>/storage/logs/backend.log`. É **PROIBIDO**
-   `pipe`/`inherit` no stdio do servidor: pipes no terminal são o canal que
-   derruba tudo quando a PTY do MobaXterm morre.
-2. **Launcher descartável — é PROIBIDO segurar o terminal:** logo após o spawn,
-   `child.unref()` (o event loop do Node não depende do filho). São
-   **proibidos** no código do launcher: `process.stdin.resume()`,
-   `setInterval` de keep-alive, `http.createServer` (dummy server),
-   `beforeExit`, `await new Promise(...)` e qualquer vínculo de morte
-   (`child.on('exit')`, `child.on('close')`, `process.on('exit')` matando o
-   filho). Após imprimir a mensagem de sucesso, o launcher chama
-   `process.exit(0)` — o prompt volta e o servidor continua no ar.
+1. **Spawn com `stdio: 'inherit'`:** o worker Python DEVE nascer com
+   **`stdio: 'inherit'`** (logs do FastAPI em tempo real no terminal),
+   `detached: true` (grupo de processos próprio: o Ctrl+C do terminal NÃO o
+   derruba direto) e `windowsHide: true` (nunca janela de console). É
+   **PROIBIDO** `pipe` no stdio do servidor (pipes no terminal são o canal
+   que derrubava tudo quando a PTY do MobaXterm morria) e é proibido
+   `child.unref()` (modelo descartável).
+2. **Terminal preso via `readline`:** o launcher DEVE criar
+   `readline.createInterface({ input: process.stdin, output: process.stdout })`
+   após a mensagem de sucesso — a interface ativa de stdin prende o processo
+   no terminal (foreground). São **proibidos** no código do launcher:
+   `process.stdin.resume()`, `setInterval` de keep-alive,
+   `http.createServer` (dummy server), `beforeExit` e
+   `await new Promise(...)` (todos falharam no MobaXterm). O handler
+   `rl.on('SIGINT', ...)` captura o Ctrl+C de forma limpa: mata o worker por
+   código (`matarArvoreProcesso`), remove o lock e sai. `SIGTERM`/`SIGBREAK`
+   são paradas legítimas pelo mesmo caminho. Nenhum `process.exit(0)` no
+   caminho de sucesso.
 3. **Lock file global:** o start DEVE gravar `<home>/leadmaster.pid`
    (`{pid, porta, versao, iniciado_em}`) e o `kill` DEVE lê-lo. Lock ausente
    ou corrompido nunca impede o arranque (best-effort).
-4. **Comando de encerramento explícito:** `kill` (alias `stop`) DEVE existir —
-   mata a árvore do PID do lock (`taskkill /F /T /PID` no Windows,
-   `kill -9` no Unix), roda a rede de segurança por porta, remove o lock e
-   imprime "Servidor encerrado com sucesso". A UI e a mensagem final do
-   `start` DEVEM ensinar o comando (`npx ... kill`).
+4. **Comando de encerramento explícito (`kill`/`stop`):** DEVE existir para o
+   caso de a janela do terminal ser fechada (o worker, em grupo isolado,
+   sobrevive) — mata a árvore do PID do lock (`taskkill /F /T /PID` no
+   Windows, `kill -9` no Unix), roda a rede de segurança por porta, remove o
+   lock e imprime "Servidor encerrado com sucesso". A mensagem final do
+   `start` e a UI ensinam o Ctrl+C; o Dashboard também mostra o `kill`.
 5. **Isolamento e higiene:** o worker nasce em grupo próprio com
    `windowsHide: true`; o kill switch (iniciado no `install` e no `start`)
    encerra instâncias anteriores do LeadMaster — descoberta por
@@ -216,10 +221,10 @@ pode ser alterado de forma a remover estas seis regras:
    criado e removem o lock).
 
 Gate de regressão: `backend/tests/test_launcher_protections.py` falha se o
-`child.unref()`, o `stdio: ['ignore', logFd, logFd]`, o lock file, o comando
-`kill` ou a mensagem de background desaparecerem — e falha se qualquer
-keep-alive proibido (`stdin.resume`, `setInterval`, `http.createServer`,
-`await new Promise`) ou vínculo de morte voltar.
+`stdio: 'inherit'`, o `readline.createInterface`, o handler `SIGINT`, o lock
+file ou o comando `kill` desaparecerem — e falha se qualquer keep-alive
+proibido (`stdin.resume`, `setInterval`, `http.createServer`,
+`await new Promise`) ou o `child.unref()` do modelo descartável voltar.
 
 ### Runtime permanente — terminantemente proibido executar do cache do npx
 

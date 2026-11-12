@@ -37,6 +37,49 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.36] — 2026-11-12
+
+### Alterado (correção de regressão)
+
+- **Launcher de volta ao terminal (foreground com `readline`):** o modelo
+  descartável da 0.1.33 liberava o terminal — o usuário quer o terminal preso
+  vendo os logs, encerrando só no **Ctrl+C**. Agora:
+  - o worker nasce com **`stdio: 'inherit'`** — logs do FastAPI em tempo real
+    no terminal (adeu `stdio: ['ignore', logFd, logFd]`);
+  - **`child.unref()` removido**; o launcher fica preso por
+    `readline.createInterface({ input: process.stdin, output: process.stdout })`
+    — **sem** `setInterval`/`stdin.resume()`/dummy server/`beforeExit`
+    (esses foram justamente o que falhou no MobaXterm);
+  - `rl.on('SIGINT')` captura o Ctrl+C de forma limpa: mata o worker por
+    código (`matarArvoreProcesso`, com `taskkill /T /F` no Windows), remove o
+    lock e sai — mensagem final ensina "Logs em tempo real abaixo; Ctrl+C
+    encerra"; `SIGTERM`/`SIGBREAK` seguem como paradas legítimas;
+  - `process.exit(0)` do fim do start **removido** (o terminal só volta pelo
+    Ctrl+C ou por erro acionável).
+- **Comando `kill`/`stop` mantido** para o caso de a janela do terminal ser
+  fechada (o worker, em grupo isolado, sobrevive) — lock global continua.
+- **AGENTS.md:** seção 🚨 REGRA INVIOLÁVEL reescrita para o modelo foreground
+  (stdio inherit, readline, Ctrl+C limpo, proibição de keep-alives e unref).
+- **Gates** (`test_launcher_protections.py`): exigem `stdio: 'inherit'`,
+  `readline.createInterface` e handler SIGINT dentro do `cmdStart`; falham se
+  keep-alives proibidos, `child.unref()` ou `process.exit(` no caminho de
+  sucesso voltarem.
+
+### Adicionado
+
+- **Relatórios (Analytics):**
+  - Rota **`GET /api/reports`**: consolidado de `campaigns.json` — resumo
+    (campanhas, enviadas, erros, **taxa de sucesso**, ativas, concluídas),
+    volume **por campanha** e **por dia** (agregado dos eventos).
+  - Página **`frontend/src/pages/Relatorios.tsx`** (rota `/relatorios`, menu
+    Gestão): cards **Total Enviado / Total de Erros / Taxa de Sucesso Geral**
+    (Lei de Miller), **gráfico de barras** enviadas × erros por campanha
+    (Chart.js) e **tabela de histórico** (nome, iniciada, concluída,
+    enviados, erros, status) + zero states e auto-refresh a cada 10s enquanto
+    houver campanha ativa.
+  - **3 novos testes pytest** (`backend/tests/test_reports.py`): base vazia,
+    consolidação de campanhas e agregação por dia. Suíte: **113 passed**.
+
 ## [0.1.35] — 2026-11-10
 
 ### Adicionado

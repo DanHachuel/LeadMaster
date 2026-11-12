@@ -23,11 +23,12 @@
  */
 
 import { spawn, spawnSync, execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, appendFileSync, rmSync, cpSync, openSync, closeSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, appendFileSync, rmSync, cpSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import readline from 'node:readline';
 import http from 'node:http';
 
 // ---------------------------------------------------------------------------
@@ -627,19 +628,14 @@ function cmdStart(args) {
     console.log(`✓ Executando a partir do runtime permanente: ${runtime}`);
 
     // -------------------------------------------------------------------------
-    // Launcher DESCARTÁVEL (arquitetura PandaNews — regra inviolável do
-    // AGENTS.md). O servidor sobe em grupo de processos próprio
-    // (detached = CREATE_NEW_PROCESS_GROUP no Windows, imune a Ctrl+C do
-    // terminal), com stdio em ARQUIVO (nunca pipes herdados do terminal) e
-    // `child.unref()` — o event loop deste launcher NÃO depende do filho.
-    // O launcher grava o lock, imprime o sucesso e SAI: o prompt volta, mas
-    // o servidor continua no ar até o comando `kill`. Não existe vínculo de
-    // morte em nenhum dos dois sentidos.
+    // Terminal PRESO (foreground — regra inviolável do AGENTS.md).
+    // O servidor sobe com stdio 'inherit' (logs do FastAPI em tempo real no
+    // terminal) e o launcher fica preso pelo readline abaixo — sem
+    // setInterval/stdin.resume/dummy server. O worker nasce em grupo próprio
+    // (detached): o Ctrl+C do terminal não o derruba direto; quem encerra é
+    // o handler 'SIGINT' do readline, que mata o filho por código e remove o
+    // lock. O lock global continua permitindo `kill` externo.
     // -------------------------------------------------------------------------
-    const logPath = path.join(home, 'storage', 'logs', 'backend.log');
-    mkdirSync(path.dirname(logPath), { recursive: true });
-    const logFd = openSync(logPath, 'a');
-
     const child = spawn(python.cmd, [...python.args, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(porta), '--no-access-log'], {
       cwd: path.join(runtime, 'backend'),
       env: {
@@ -650,38 +646,22 @@ function cmdStart(args) {
         PYTHONUTF8: '1',
         PYTHONIOENCODING: 'utf-8',
       },
-      stdio: ['ignore', logFd, logFd], // saída em arquivo: não herda o terminal
+      stdio: 'inherit', // logs do FastAPI em tempo real no terminal
       detached: true,
       windowsHide: true,
     });
-    closeSync(logFd); // o filho tem sua própria cópia herdada do FD
-    child.unref(); // launcher descartável: o loop do Node não depende do filho
 
-    // Lock global: PID do backend + porta — sobrevive à morte do launcher.
+    // Lock global: PID do backend + porta (permite `kill` externo e o kill
+    // switch do próximo start).
     escreverLock(home, child.pid ?? null, porta);
 
-    // Durante a curtíssima vida do launcher, sinais espúrios do MobaXterm
-    // são absorvidos no Windows (apenas log); SIGTERM/SIGBREAK encerram por
-    // código (matam o servidor recém-criado e removem o lock).
-    const ehWindows = platform() === 'win32';
     const pararTudo = (codigo) => {
       if (child && child.pid) matarArvoreProcesso(child.pid);
       removerLock(home);
       process.exit(codigo);
     };
-    const absorverSinal = (nome) => () => {
-      console.log(`[LAUNCHER] Sinal absorvido no Windows (${nome}) — o servidor continua em background.`);
-    };
-    process.on('SIGINT', ehWindows ? absorverSinal('SIGINT') : () => pararTudo(0));
-    process.on('SIGHUP', ehWindows ? absorverSinal('SIGHUP') : () => pararTudo(0));
-    process.on('SIGTERM', () => pararTudo(0));
-    if (ehWindows) {
-      // SIGBREAK (Ctrl+Break): parada legítima também no Windows.
-      process.on('SIGBREAK', () => pararTudo(0));
-    }
 
     console.log(`→ Subindo servidor local em ${url} ...`);
-    console.log(`  (log do servidor: ${logPath})`);
     const health = await waitForHealth(porta, 120000);
     if (!health) {
       console.error(`✗ O servidor não respondeu em ${url} dentro do tempo limite.`);
@@ -690,12 +670,26 @@ function cmdStart(args) {
       return;
     }
 
-    console.log(`✓ LeadMaster rodando em background na porta ${porta} (dados: ${home})`);
+    console.log(`✓ LeadMaster no ar em ${url} (dados: ${home})`);
     console.log('');
     console.log(`ℹ Abra ${url} no navegador quando quiser — o LeadMaster nunca abre janelas sozinho.`);
-    console.log('ℹ O terminal está livre: este launcher encerra e o servidor continua rodando.');
-    console.log(`ℹ Para encerrar o servidor: npx --yes @danhachuel/leadmaster@${VERSION} kill`);
-    process.exit(0);
+    console.log('ℹ Logs do servidor em tempo real abaixo. Para encerrar: Ctrl+C.');
+
+    // Foreground: a interface readline mantém o processo Node vivo no terminal
+    // (sem setInterval/stdin.resume/dummy server) e captura o Ctrl+C de forma
+    // limpa. O worker (grupo isolado) não recebe o Ctrl+C direto — quem o
+    // encerra é o handler abaixo. SIGTERM/SIGBREAK seguem como paradas
+    // legítimas por código.
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.on('SIGINT', () => {
+      console.log('\nEncerrando LeadMaster...');
+      pararTudo(0);
+    });
+    process.on('SIGTERM', () => pararTudo(0));
+    if (platform() === 'win32') {
+      // SIGBREAK (Ctrl+Break): parada legítima também no Windows.
+      process.on('SIGBREAK', () => pararTudo(0));
+    }
   })().catch((err) => {
     console.error('✗ Erro inesperado ao iniciar:', err && err.message ? err.message : err);
     process.exit(1);
@@ -774,8 +768,8 @@ function cmdHelp() {
   console.log('');
   console.log('Comandos:');
   console.log('  install   Prepara a pasta de dados e instala dependências Python.');
-  console.log('  start     Sobe o servidor em background (padrão) e imprime a URL — o terminal fica livre.');
-  console.log('  kill      Encerra o servidor em background (alias: stop).');
+  console.log('  start     Sobe o servidor no terminal (padrão): logs em tempo real; Ctrl+C encerra.');
+  console.log('  kill      Encerra o servidor (alias: stop) — útil se o terminal foi fechado.');
   console.log('  doctor    Diagnóstico do ambiente.');
   console.log('  version   Mostra a versão.');
   console.log('  help      Esta ajuda.');

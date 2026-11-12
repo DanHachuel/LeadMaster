@@ -1,10 +1,11 @@
 """Gate de regressão da arquitetura do launcher (scripts/cli.mjs).
 
-Arquitetura "launcher descartável" (padrão PandaNews, adotada na 0.1.33):
-o launcher sobe o servidor DESTACADO, grava o lock e SAI — o servidor
-sobrevive ao terminal e só morre pelo comando `kill` (ou pelo kill switch
-do próximo start). O gate falha se qualquer peça dessa arquitetura for
-removida ou se o modelo antigo (terminal preso) voltar.
+Modelo vigente (0.1.34): TERMINAL PRESO (foreground). O servidor sobe com
+`stdio: 'inherit'` (logs do FastAPI no terminal em tempo real) e o launcher
+fica preso pelo `readline` — que também captura o Ctrl+C de forma limpa
+(mata o worker por código e remove o lock). São PROIBIDOS os keep-alives do
+modelo anterior (setInterval, stdin.resume, dummy server, beforeExit,
+await new Promise) e o `child.unref()` do modelo descartável.
 """
 
 import re
@@ -35,85 +36,92 @@ def _corpo_cmd_start() -> str:
 
 class TestLauncherProtections:
     # ------------------------------------------------------------------
-    # Espinha dorsal da arquitetura descartável
+    # Espinha dorsal do modelo foreground
     # ------------------------------------------------------------------
 
-    def test_spawn_destacado_com_stdio_em_arquivo(self):
+    def test_stdio_inherit_logs_no_terminal(self):
         corpo = _corpo_cmd_start()
-        assert "spawn(" in corpo
-        assert "detached: true" in corpo  # grupo próprio: imune a Ctrl+C
-        assert "windowsHide: true" in corpo  # nunca janela de console
-        assert "stdio: ['ignore', logFd, logFd]" in corpo  # NUNCA pipes no terminal
-        assert "openSync(logPath, 'a')" in corpo  # FD do arquivo de log
+        assert "stdio: 'inherit'" in corpo  # logs do FastAPI em tempo real
+        assert "logFd" not in corpo  # nada de saída em arquivo
 
-    def test_launcher_descartavel_unref(self):
+    def test_terminal_preso_por_readline(self):
         corpo = _corpo_cmd_start()
-        # O event loop do launcher NÃO depende do filho (ele sai sozinho).
-        assert "child.unref();" in corpo
-        # ...e o launcher encerra após o sucesso (prompt volta de propósito).
-        assert "process.exit(0);" in corpo
-        assert "rodando em background" in corpo
+        assert "import readline from 'node:readline'" in _conteudo()
+        assert "readline.createInterface" in corpo
+        assert "rl.on('SIGINT'" in corpo  # Ctrl+C limpo
+        # O handler de Ctrl+C mata o worker e remove o lock (nunca órfã).
+        inicio = corpo.index("rl.on('SIGINT'")
+        fim = corpo.index("});", inicio)
+        handler = corpo[inicio:fim]
+        assert "pararTudo(" in handler or "matarArvoreProcesso" in handler
+
+    def test_nao_ha_exit_no_caminho_de_sucesso(self):
+        # Após a mensagem de sucesso, o launcher NÃO chama process.exit —
+        # quem segura é o readline; a saída acontece só pelo Ctrl+C/SIGTERM/
+        # SIGBREAK (ou por erros acionáveis, que ficam ANTES desta marca).
+        corpo = _corpo_cmd_start()
+        assert "LeadMaster no ar em" in corpo
+        trecho = corpo[corpo.index("LeadMaster no ar em") : corpo.index("readline.createInterface")]
+        assert "process.exit(" not in trecho
 
     # ------------------------------------------------------------------
-    # Fim do modelo antigo: é PROIBDO segurar o terminal
+    # Fim dos modelos anteriores: keep-alives e unref são PROIBIDOS
     # ------------------------------------------------------------------
 
-    def test_proibido_segurar_o_terminal(self):
+    def test_proibido_keepalive_antigo(self):
         codigo = _codigo_sem_comentarios()
         for proibido in (
             "process.stdin.resume",
             "http.createServer",  # dummy server
             "await new Promise",  # congelamento do fluxo
-            "setInterval",  # keep-alive
+            "setInterval",  # keep-alive de timer
             "beforeExit",
         ):
             assert proibido not in codigo, f"keep-alive proibido voltou: {proibido}"
 
-    def test_proibido_vinculo_de_morte(self):
+    def test_proibido_unref_descartavel(self):
         codigo = _codigo_sem_comentarios()
-        # O launcher NÃO pode matar o Python ao morrer, nem morrer com ele.
-        assert "child.on('exit'" not in codigo
-        assert "child.on('close'" not in codigo
-        assert "process.on('exit'" not in codigo
+        assert "child.unref" not in codigo  # modelo background/descartável saiu
+
+    def test_proibido_stdio_pipe_no_servidor(self):
+        codigo = _codigo_sem_comentarios()
+        corpo = _corpo_cmd_start()
+        assert "stdio: 'pipe'" not in corpo
+        assert "stdio: ['ignore', 'pipe', 'pipe']" not in corpo
 
     # ------------------------------------------------------------------
-    # Lock file + comando kill
+    # Lock file + comando kill + kill switch (continuam valendo)
     # ------------------------------------------------------------------
 
     def test_lock_file_global(self):
         codigo = _codigo_sem_comentarios()
-        assert "leadmaster.pid" in codigo  # arquivo de lock
-        assert "escreverLock(" in codigo  # gravado no start
-        assert "lerLock(" in codigo  # lido no kill/doctor
-        assert "removerLock(" in codigo  # removido no kill
+        assert "leadmaster.pid" in codigo
+        assert "escreverLock(" in codigo
+        assert "lerLock(" in codigo
+        assert "removerLock(" in codigo
 
     def test_comando_kill(self):
         c = _conteudo()
-        assert "'kill'" in c and "'stop'" in c  # dispatcher aceita os dois
+        assert "'kill'" in c and "'stop'" in c
         assert "async function cmdKill(" in c
-        assert "taskkill" in c  # Windows: /F /T por PID
+        assert "taskkill" in c
         kill = c[c.index("async function cmdKill(") : c.index("async function cmdDoctor(")]
         assert "matarArvoreProcesso" in kill
-        assert "encerrarInstanciaAnterior" in kill  # rede de segurança por porta
+        assert "encerrarInstanciaAnterior" in kill
         assert "removerLock" in kill
         assert "Servidor encerrado com sucesso" in kill
 
-    def test_mensagem_final_ensina_o_kill(self):
-        corpo = _corpo_cmd_start()
-        assert "leadmaster kill" in corpo or "@${VERSION} kill" in corpo
-
     # ------------------------------------------------------------------
-    # Proteções que permanecem (higiene e isolamento)
+    # Isolamento e higiene
     # ------------------------------------------------------------------
 
     def test_kill_switch_mata_instancia_anterior(self):
         c = _conteudo()
         assert "encerrarInstanciaAnterior" in c
-        assert "taskkill" in c
         assert "netstat" in c or "lsof" in c
         assert "já está rodando" not in c
 
-    def test_isolamento_do_worker(self):
-        c = _conteudo()
-        assert "detached: true" in c
-        assert "windowsHide: true" in c
+    def test_worker_isolado(self):
+        corpo = _corpo_cmd_start()
+        assert "detached: true" in corpo  # grupo próprio: Ctrl+C não o derruba
+        assert "windowsHide: true" in corpo  # nunca janela de console

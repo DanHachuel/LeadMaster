@@ -42,10 +42,12 @@ export function Dashboard({ nomeUsuario }: { nomeUsuario: string }) {
             </span>
           )}
         </div>
-        {/* Modelo background: o servidor sobrevive ao terminal; encerrar é comando */}
+        {/* Terminal preso (foreground): logs em tempo real; Ctrl+C encerra. Se
+            a janela do terminal for fechada, o servidor continua no ar. */}
         <p className="mt-1.5 text-xs text-gray-400">
-          <i className="fas fa-server mr-1" />
-          O servidor roda em <strong>background</strong> e sobrevive ao fechamento do terminal. Para encerrar:{' '}
+          <i className="fas fa-terminal mr-1" />
+          O terminal mostra os logs do servidor em tempo real — <strong>Ctrl+C</strong> encerra. Se a janela for
+          fechada, o servidor continua no ar; para encerrar:{' '}
           <code className="bg-gray-100 rounded px-1 py-0.5 text-[11px]">npx --yes @danhachuel/leadmaster kill</code>
         </p>
       </div>

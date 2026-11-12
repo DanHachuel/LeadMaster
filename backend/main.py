@@ -767,6 +767,66 @@ def funil_prospeccao():
 
 
 # ---------------------------------------------------------------------------
+# Relatórios (Analytics)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/reports")
+def relatorios():
+    """Consolidado das campanhas para o painel de Relatórios.
+
+    Devolve: resumo (campanhas, enviadas, erros, taxa de sucesso, ativas,
+    concluídas), volume por campanha e volume por dia (agregado dos eventos
+    de todas as campanhas).
+    """
+    campaigns = storage.list_campaigns()
+    enviadas = sum(int(c.get("enviadas", 0)) for c in campaigns)
+    erros = sum(int(c.get("erros", 0)) for c in campaigns)
+    total_envios = enviadas + erros
+
+    por_campanha = [
+        {
+            "id": c.get("id", ""),
+            "nome": c.get("nome", ""),
+            "status": c.get("status", ""),
+            "enviadas": int(c.get("enviadas", 0)),
+            "erros": int(c.get("erros", 0)),
+            "total": int(c.get("total", len(c.get("lead_ids", [])))),
+            "iniciada_em": c.get("iniciada_em", ""),
+            "concluida_em": c.get("concluida_em", ""),
+            "criado_em": c.get("criado_em", ""),
+        }
+        for c in campaigns
+    ]
+
+    # Volume por dia (eventos de todas as campanhas).
+    por_dia: dict[str, dict] = {}
+    for c in campaigns:
+        for e in c.get("eventos", []):
+            dia = (e.get("momento") or "")[:10]
+            if not dia:
+                continue
+            bucket = por_dia.setdefault(dia, {"enviadas": 0, "erros": 0})
+            if e.get("status") == "enviado":
+                bucket["enviadas"] += 1
+            else:
+                bucket["erros"] += 1
+    serie_dias = [{"dia": d, **por_dia[d]} for d in sorted(por_dia)]
+
+    return {
+        "resumo": {
+            "campanhas": len(campaigns),
+            "enviadas": enviadas,
+            "erros": erros,
+            "taxa_sucesso": round(enviadas / total_envios * 100, 1) if total_envios else 0.0,
+            "ativas": sum(1 for c in campaigns if c.get("status") == "em_andamento"),
+            "concluidas": sum(1 for c in campaigns if c.get("status") == "concluida"),
+        },
+        "por_campanha": por_campanha,
+        "por_dia": serie_dias,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Configuração e integrações
 # ---------------------------------------------------------------------------
 
