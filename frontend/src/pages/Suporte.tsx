@@ -263,7 +263,7 @@ function Rodape() {
     <div className="bg-[#1e1b4b] text-white rounded-xl p-6 flex items-center justify-between flex-wrap gap-4">
       <div>
         <p className="text-sm font-semibold">LeadMaster — SaaS local de prospecção e automação de conteúdo</p>
-        <p className="text-xs text-gray-300 mt-1">Instalável via npx · dados 100% locais · sem mensalidade de nuvem</p>
+        <p className="text-xs text-indigo-200 mt-1">Instalável via npx · dados 100% locais · sem mensalidade de nuvem</p>
       </div>
       <a
         href="https://github.com/DanHachuel/LeadMaster"

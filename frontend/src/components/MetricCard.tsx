@@ -14,15 +14,15 @@ interface Props {
  */
 export function MetricCard({ rotulo, valor, subtitulo, children, icone }: Props) {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+    <div className="bg-[var(--bg-secondary)] rounded-xl shadow-sm p-5 border border-[var(--border-color)]">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500 font-medium">{rotulo}</p>
+        <p className="text-sm text-[var(--text-secondary)] font-medium">{rotulo}</p>
         {icone && <i className={`${icone} text-indigo-300`} />}
       </div>
       {children ?? (
         <>
-          <p className="text-2xl font-bold text-gray-800 mt-1">{valor}</p>
-          {subtitulo && <p className="text-xs text-gray-400 mt-0.5">{subtitulo}</p>}
+          <p className="text-2xl font-bold text-[var(--text-primary)] mt-1">{valor}</p>
+          {subtitulo && <p className="text-xs text-[var(--text-muted)] mt-0.5">{subtitulo}</p>}
         </>
       )}
     </div>

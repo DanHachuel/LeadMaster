@@ -31,12 +31,12 @@ export function Modal({ aberto, onFechar, titulo, children, icone = 'fas fa-circ
         if (e.target === e.currentTarget) onFechar();
       }}
     >
-      <div className={cn('bg-white rounded-2xl shadow-xl w-full', LARGURAS[largura])}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+      <div className={cn('bg-[var(--bg-secondary)] rounded-2xl shadow-xl w-full', LARGURAS[largura])}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
+          <h3 className="text-base font-semibold text-[var(--text-primary)] flex items-center gap-2">
             <i className={cn(icone, 'text-indigo-500')} /> {titulo}
           </h3>
-          <button onClick={onFechar} className="text-gray-400 hover:text-gray-600" aria-label="Fechar">
+          <button onClick={onFechar} className="text-[var(--text-muted)] hover:text-[var(--text-secondary)]" aria-label="Fechar">
             <i className="fas fa-times" />
           </button>
         </div>

@@ -37,6 +37,36 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.38] — 2026-11-12
+
+### Adicionado
+
+- **Modo claro/escuro (tema light/dark — padrão ProdMaker):**
+  - Hook `frontend/src/hooks/useTheme.ts`: estado `'light' | 'dark'` (padrão
+    **dark**, mantendo a identidade atual), persistência em
+    `localStorage` (`leadmaster_theme`), aplicação via
+    `document.documentElement.setAttribute('data-theme', theme)` e
+    `toggleTheme()`.
+  - **Botão de alternância no Header** (canto superior direito, ao lado do
+    nome do usuário): ícone **sol** quando escuro (ação: clarear) e **lua**
+    quando claro (ação: escurecer), com `aria-label`/`title`
+    ("Alternar para tema claro/escuro") e hover suave.
+  - **Variáveis CSS** em `index.css` (`--bg-primary`, `--bg-secondary`,
+    `--text-primary`, `--text-secondary`, `--border-color`,
+    `--bg-tertiary`, `--text-muted`, `--sidebar-bg`) com seletores
+    `[data-theme='dark']` e `[data-theme='light']`:
+    dark = slate-900/slate-800/slate-100; light = slate-50/branco/slate-900.
+  - **Camada de remapeamento** (especificidade `main ...`, vence as utilities
+    sem quebrar a sidebar — que é sempre escura por identidade): `bg-white`,
+    `bg-gray-50/100`, `text-gray-*` e `border-gray-*` passam a seguir as
+    variáveis nos dois temas. Cores semânticas (indigo/red/green/amber/blue)
+    ficam de fora: badges e alertas mantêm o significado.
+  - Componentes raiz migrados para as variáveis: Header, Sidebar, MetricCard,
+    Modal, Accordion, ProgressBar; scrollbar e rodapés escuros ajustados.
+- **Gate de regressão** (`backend/tests/test_ui_theme.py`): falha se o hook,
+    o botão do Header, as variáveis CSS ou a camada de remapeamento
+    desaparecerem. Suíte: **127 passed**.
+
 ## [0.1.37] — 2026-11-12
 
 ### Adicionado

@@ -37,7 +37,7 @@
 /* ---------------------------------------------------------------------------
    Camada de tema: remapeia as classes utilitárias usadas nos componentes para
    as variáveis. Regras com seletor descendente `main ...` (especificidade
-   (0,2,0)) vencem as utilities do Tailwheel sem depender de ordem e NÃO
+   (0,2,0)) vencem as utilities do Tailwind sem depender de ordem e NÃO
    alcançam a sidebar (fora do <main>) — que é sempre escura por identidade.
    Cores semânticas (indigo/red/green/amber/blue) ficam de fora: badges e
    alertas mantêm seu significado nos dois temas.

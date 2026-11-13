@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal } from './Modal';
 import { primeiraLetra } from '../lib/format';
+import { useTheme } from '../hooks/useTheme';
 
 interface Props {
   titulo: string;
@@ -14,14 +15,16 @@ const PASSOS_TUTORIAL = [
   { icone: 'fas fa-robot', texto: 'Use os Agentes (disparo e atendimento) e configure o LLM em Ferramentas para turbiná-los.' },
 ];
 
-/** Header do protótipo: título da página, tutorial, avatar e nome do usuário. */
+/** Header do protótipo: título da página, tutorial, tema, avatar e nome. */
 export function Header({ titulo, nomeUsuario }: Props) {
   const [tutorialAberto, setTutorialAberto] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const escuro = theme === 'dark';
 
   return (
-    <header className="bg-white shadow-sm px-8 py-4 flex items-center justify-between shrink-0">
+    <header className="bg-[var(--bg-secondary)] shadow-sm px-8 py-4 flex items-center justify-between shrink-0 border-b border-[var(--border-color)]">
       <div>
-        <h2 className="text-lg font-semibold text-gray-800">{titulo}</h2>
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">{titulo}</h2>
       </div>
       <div className="flex items-center space-x-4">
         <button
@@ -30,10 +33,19 @@ export function Header({ titulo, nomeUsuario }: Props) {
         >
           <i className="fas fa-play-circle mr-1" /> Ver tutorial
         </button>
+        {/* Alternância de tema (lua = escurecer quando claro; sol = clarear quando escuro) */}
+        <button
+          onClick={toggleTheme}
+          aria-label={escuro ? 'Alternar para tema claro' : 'Alternar para tema escuro'}
+          title={escuro ? 'Alternar para tema claro' : 'Alternar para tema escuro'}
+          className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-indigo-600 transition"
+        >
+          <i className={escuro ? 'fas fa-sun' : 'fas fa-moon'} />
+        </button>
         <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
           {primeiraLetra(nomeUsuario)}
         </div>
-        <span className="text-sm font-medium text-gray-700">{nomeUsuario}</span>
+        <span className="text-sm font-medium text-[var(--text-primary)]">{nomeUsuario}</span>
       </div>
 
       <Modal aberto={tutorialAberto} onFechar={() => setTutorialAberto(false)} titulo="Tutorial rápido" icone="fas fa-graduation-cap">

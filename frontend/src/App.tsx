@@ -132,7 +132,7 @@ function Layout({
   const titulo = TITULOS[local.pathname] ?? 'LeadMaster';
 
   return (
-    <div className="bg-gray-100 min-h-screen flex">
+    <div className="bg-[var(--bg-primary)] min-h-screen flex">
       <Sidebar onSair={onSair} />
       <main className="flex-1 flex flex-col min-w-0">
         <Header titulo={titulo} nomeUsuario={nomeUsuario} />

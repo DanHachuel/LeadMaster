@@ -17,12 +17,12 @@ export function ProgressBar({ valor, altura = 'md', mostrarLabel = false, classN
   return (
     <div className={cn('w-full', className)}>
       {mostrarLabel && (
-        <div className="flex justify-between text-xs text-gray-500 mb-1">
+        <div className="flex justify-between text-xs text-[var(--text-secondary)] mb-1">
           <span>Progresso</span>
-          <span className="font-semibold text-gray-700">{v}%</span>
+          <span className="font-semibold text-[var(--text-primary)]">{v}%</span>
         </div>
       )}
-      <div className={cn('w-full bg-gray-200 rounded-full overflow-hidden', alturas[altura])}>
+      <div className={cn('w-full bg-[var(--bg-tertiary)] rounded-full overflow-hidden', alturas[altura])}>
         <div
           className={cn('h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500')}
           style={{ width: `${v}%` }}

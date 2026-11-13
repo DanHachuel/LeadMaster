@@ -67,7 +67,7 @@ export function Sidebar({ onSair }: Props) {
   };
 
   return (
-    <aside className="w-64 bg-[#1e1b4b] text-white flex flex-col shrink-0 h-screen sticky top-0">
+    <aside className="w-64 bg-[var(--sidebar-bg)] text-white flex flex-col shrink-0 h-screen sticky top-0">
       {/* Logo */}
       <div className="p-6 border-b border-gray-700">
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
