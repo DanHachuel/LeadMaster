@@ -55,6 +55,18 @@ export interface Campanha {
   eventos: EventoCampanha[];
 }
 
+export interface Cadencia {
+  id: string;
+  nome: string;
+  etapa_gatilho: string;
+  dias_espera: number;
+  acao: string;
+  ativo: boolean;
+  criado_em?: string;
+  atualizado_em?: string;
+  ultimas_execucoes?: { lead_id: string; lead_nome?: string; acao: string; descricao: string; executada_em: string }[];
+}
+
 export interface SugestaoCrm {
   lead_id: string;
   lead_nome: string;

@@ -37,6 +37,36 @@ normaliza para a forma canônica (ex.: `0.1.0`).
    falha se `process.stdin.resume();` desaparecer, se `.unref()` aparecer, se o
    ciclo de vida vinculado for removido ou se os handlers globais sumirem.
 
+## [0.1.37] — 2026-11-12
+
+### Adicionado
+
+- **Cadências de Follow-up (reengajamento automático):**
+  - Storage `cadences.json` com `[{"id", "nome", "etapa_gatilho", "dias_espera",
+    "acao", "ativo", "ultimas_execucoes"}]`; `config.json → cadencias.intervalo_horas`
+    define a frequência do worker (padrão 1h).
+  - Worker em background (`asyncio.create_task` no lifespan do FastAPI,
+    `services/cadence.py`): a cada hora verifica os leads parados na etapa
+    gatilho além dos `dias_espera` (usando `atualizado_em`) e aplica a ação
+    — **mover_para_proposta**, **mover_para_em_contato** ou **adicionar_tag_frio**
+    — registrando a execução na cadência e disparando o webhook
+    `cadencia.executada`. O worker é resiliente (nunca derruba a API) e a
+    verificação pode ser forçada pela rota.
+  - Rotas: `GET/POST /api/cadences`, `PUT/DELETE /api/cadences/{id}` (validações:
+    dias ≥ 1, etapa gatilho e ação válidas; 404 para inexistentes) +
+    `POST /api/cadences/verificar` (execução imediata).
+  - Frontend: página `/cadencias` (menu lateral "Cadências" em Gestão) com
+    tabela (Nome, Etapa Gatilho, Dias, Ação, Status), última execução por
+    cadência, botão **"Nova Cadência"** em gradiente (von Restorff), modal com
+    **no máximo 4 campos** (Lei de Hick), toggle ativo/inativo com cores
+    contrastantes (verde/vermelho) e **ícone de relógio pulsante** nas
+    cadências ativas (Zeigarnik). Prevenção de erros: dias ≤ 0 bloqueia com
+    borda vermelha + mensagem; nome vazio bloqueia.
+- **10 novos testes pytest** (`backend/tests/test_cadences.py`): CRUD completo
+  (criar/editar/remover/404), validações (dias 0 → 422, dia negativo → 400,
+  ação/etapa inválidas → 400) e worker (lead antigo movido, lead recente
+  preservado, cadência inativa não executa, ação de tag). Suíte: **123 passed**.
+
 ## [0.1.36] — 2026-11-12
 
 ### Alterado (correção de regressão)

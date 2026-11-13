@@ -17,6 +17,7 @@ import { ExtratorInstagram } from './pages/ExtratorInstagram';
 import { ExtratorCNPJ } from './pages/ExtratorCNPJ';
 import { Conexoes } from './pages/Conexoes';
 import { Funil } from './pages/Funil';
+import { Cadencias } from './pages/Cadencias';
 import { Agentes } from './pages/Agentes';
 import { Ferramentas } from './pages/Ferramentas';
 import { Webhook } from './pages/Webhook';
@@ -36,6 +37,7 @@ const TITULOS: Record<string, string> = {
   '/crm': 'CRM — Kanban',
   '/conexoes': 'Conexões',
   '/funil': 'Funil de Prospecção',
+  '/cadencias': 'Cadências de Follow-up',
   '/webhook': 'Webhook',
   '/suporte': 'Suporte',
 };
@@ -141,6 +143,7 @@ function Layout({
             <Route path="/crm" element={<CRM />} />
             <Route path="/conexoes" element={<Conexoes />} />
             <Route path="/funil" element={<Funil />} />
+            <Route path="/cadencias" element={<Cadencias />} />
             <Route path="/disparos" element={<Disparos />} />
             <Route path="/relatorios" element={<Relatorios />} />
             <Route path="/extratores" element={<Extratores />} />

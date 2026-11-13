@@ -38,6 +38,7 @@ const NAVEGACAO: { secao?: string; itens: ItemNav[] }[] = [
       { para: '/relatorios', icone: 'fas fa-chart-pie', rotulo: 'Relatórios' },
       { para: '/crm', icone: 'fas fa-columns', rotulo: 'CRM' },
       { para: '/funil', icone: 'fas fa-filter', rotulo: 'Funil de Prospecção' },
+      { para: '/cadencias', icone: 'fas fa-clock-rotate-left', rotulo: 'Cadências' },
     ],
   },
   {

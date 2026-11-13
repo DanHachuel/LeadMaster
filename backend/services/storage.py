@@ -21,6 +21,7 @@ CAMPAIGNS_FILE = "campaigns.json"
 PIPELINE_FILE = "pipeline.json"
 CONFIG_FILE = "config.json"
 AGENTS_FILE = "agents.json"
+CADENCES_FILE = "cadences.json"
 CHAT_HISTORY_FILE = "chat_history.json"
 
 
@@ -146,7 +147,10 @@ DEFAULT_CONFIG = {
     },
     "webhook": {
         "url": "",
-        "eventos": ["lead.criado", "campanha.iniciada", "campanha.concluida"],
+        "eventos": ["lead.criado", "campanha.iniciada", "campanha.concluida", "cadencia.executada"],
+    },
+    "cadencias": {
+        "intervalo_horas": 1,
     },
 }
 
@@ -439,6 +443,55 @@ def clear_chat_history() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Cadências de follow-up
+# ---------------------------------------------------------------------------
+
+ACOES_CADENCIA = [
+    "mover_para_proposta",
+    "mover_para_em_contato",
+    "adicionar_tag_frio",
+]
+
+
+def list_cadences() -> list:
+    return _read(CADENCES_FILE, [])
+
+
+def save_cadences(cadences: list) -> None:
+    _write(CADENCES_FILE, cadences)
+
+
+def upsert_cadence(cadence: dict) -> dict:
+    with LOCK:
+        cadences = list_cadences()
+        for i, c in enumerate(cadences):
+            if c.get("id") == cadence["id"]:
+                cadences[i] = cadence
+                break
+        else:
+            cadences.append(cadence)
+        save_cadences(cadences)
+        return cadence
+
+
+def get_cadence(cadence_id: str) -> dict | None:
+    for c in list_cadences():
+        if c.get("id") == cadence_id:
+            return c
+    return None
+
+
+def delete_cadence(cadence_id: str) -> bool:
+    with LOCK:
+        cadences = list_cadences()
+        restantes = [c for c in cadences if c.get("id") != cadence_id]
+        if len(restantes) == len(cadences):
+            return False
+        save_cadences(restantes)
+        return True
+
+
+# ---------------------------------------------------------------------------
 # Seeds (primeira execução)
 # ---------------------------------------------------------------------------
 
@@ -521,6 +574,8 @@ def ensure_seeds() -> None:
             _write(CONFIG_FILE, DEFAULT_CONFIG)
         if not (d / AGENTS_FILE).exists():
             _write(AGENTS_FILE, DEFAULT_AGENTS)
+        if not (d / CADENCES_FILE).exists():
+            _write(CADENCES_FILE, [])
 
 
 def limpar_seeds_demo() -> None:

@@ -4,6 +4,7 @@ Rotas da aplicação + serving estático da UI construída (frontend/dist) para 
 modo `npx`, onde um único servidor entrega painel e API na mesma porta.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -19,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from services import agents, crm_agent, extractors, llm, storage, whatsapp
+from services import agents, cadence, crm_agent, extractors, llm, storage, whatsapp
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
@@ -61,7 +62,12 @@ logging.getLogger("uvicorn.access").addFilter(_FiltroAcessoPolling())
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     storage.ensure_seeds()
-    yield
+    # Worker de cadências de follow-up em background (roda no intervalo do config).
+    tarefa_cadencias = asyncio.create_task(cadence.worker_loop())
+    try:
+        yield
+    finally:
+        tarefa_cadencias.cancel()
 
 
 app = FastAPI(title="LeadMaster API", version=VERSION, lifespan=lifespan)
@@ -1022,6 +1028,74 @@ def whatsapp_teste_envio(dados: WhatsappTesteIn):
         return whatsapp.enviar_texto(dados.telefone, dados.mensagem)
     except whatsapp.GatewayErro as e:
         raise HTTPException(503, str(e))
+
+
+# ---------------------------------------------------------------------------
+# Cadências de follow-up
+# ---------------------------------------------------------------------------
+
+class CadenceIn(BaseModel):
+    nome: str = Field(min_length=2)
+    etapa_gatilho: str = Field(min_length=2)
+    dias_espera: int = Field(ge=1)
+    acao: str = Field(min_length=2)
+    ativo: bool = True
+
+
+@app.get("/api/cadences")
+def listar_cadencias():
+    return storage.list_cadences()
+
+
+@app.post("/api/cadences", status_code=201)
+def criar_cadencia(cadence_in: CadenceIn):
+    if cadence_in.etapa_gatilho not in ("leads", "em_contato", "proposta", "fechado"):
+        raise HTTPException(400, "Etapa gatilho inválida. Use: leads, em_contato, proposta ou fechado.")
+    if cadence_in.acao not in storage.ACOES_CADENCIA:
+        raise HTTPException(400, f"Ação inválida. Use: {', '.join(storage.ACOES_CADENCIA)}.")
+    cadencia = cadence_in.model_dump()
+    cadencia["id"] = storage._novo_id()
+    cadencia["criado_em"] = storage.now_iso()
+    cadencia.setdefault("ultimas_execucoes", [])
+    return storage.upsert_cadence(cadencia)
+
+
+@app.put("/api/cadences/{cadence_id}")
+def editar_cadencia(cadence_id: str, dados: dict):
+    cadencia = storage.get_cadence(cadence_id)
+    if not cadencia:
+        raise HTTPException(404, "Cadência não encontrada.")
+    for campo in ("nome", "etapa_gatilho", "acao", "ativo", "ultimas_execucoes"):
+        if campo in dados:
+            cadencia[campo] = dados[campo]
+    if "dias_espera" in dados:
+        try:
+            dias = int(dados["dias_espera"])
+        except (TypeError, ValueError):
+            raise HTTPException(400, "dias_espera deve ser um inteiro positivo.")
+        if dias < 1:
+            raise HTTPException(400, "dias_espera não pode ser zero ou negativo.")
+        cadencia["dias_espera"] = dias
+    if cadencia.get("etapa_gatilho") not in ("leads", "em_contato", "proposta", "fechado"):
+        raise HTTPException(400, "Etapa gatilho inválida. Use: leads, em_contato, proposta ou fechado.")
+    if cadencia.get("acao") not in storage.ACOES_CADENCIA:
+        raise HTTPException(400, f"Ação inválida. Use: {', '.join(storage.ACOES_CADENCIA)}.")
+    cadencia["atualizado_em"] = storage.now_iso()
+    return storage.upsert_cadence(cadencia)
+
+
+@app.delete("/api/cadences/{cadence_id}")
+def remover_cadencia(cadence_id: str):
+    if not storage.delete_cadence(cadence_id):
+        raise HTTPException(404, "Cadência não encontrada.")
+    return {"ok": True}
+
+
+@app.post("/api/cadences/verificar")
+def verificar_cadencias():
+    """Força uma verificação imediata das cadências (não espera o worker)."""
+    executadas = cadence.verificar_cadencias_agora()
+    return {"executadas": executadas}
 
 
 # ---------------------------------------------------------------------------

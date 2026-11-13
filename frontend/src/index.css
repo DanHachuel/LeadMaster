@@ -2,6 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===========================================================================
+   TEMAS (claro/escuro) — variáveis CSS e camada de remapeamento
+   Dark é o padrão (identidade atual); light alternável pelo botão do Header.
+   As variáveis vivem em index.css e são aplicadas via [data-theme] no <html>
+   (ver hooks/useTheme.ts).
+   =========================================================================== */
+
+:root,
+[data-theme='dark'] {
+  --bg-primary: #0f172a;   /* fundo da aplicação */
+  --bg-secondary: #1e293b; /* cards, header, modais */
+  --bg-tertiary: #334155;  /* blocos internos, hovers */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border-color: #334155;
+  --sidebar-bg: #1e1b4b;   /* sidebar escura é identidade do produto */
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border-color: #e2e8f0;
+  --sidebar-bg: #1e1b4b;
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------------
+   Camada de tema: remapeia as classes utilitárias usadas nos componentes para
+   as variáveis. Regras com seletor descendente `main ...` (especificidade
+   (0,2,0)) vencem as utilities do Tailwheel sem depender de ordem e NÃO
+   alcançam a sidebar (fora do <main>) — que é sempre escura por identidade.
+   Cores semânticas (indigo/red/green/amber/blue) ficam de fora: badges e
+   alertas mantêm seu significado nos dois temas.
+   --------------------------------------------------------------------------- */
+.bg-gray-100 {
+  background-color: var(--bg-primary);
+}
+
+main .bg-white {
+  background-color: var(--bg-secondary);
+}
+main .bg-gray-50 {
+  background-color: var(--bg-tertiary);
+}
+main .bg-gray-50\/50 {
+  background-color: var(--bg-tertiary);
+}
+main .bg-gray-100 {
+  background-color: var(--bg-tertiary);
+}
+
+main .text-gray-900,
+main .text-gray-800,
+main .text-gray-700 {
+  color: var(--text-primary);
+}
+main .text-gray-600,
+main .text-gray-500 {
+  color: var(--text-secondary);
+}
+main .text-gray-400,
+main .text-gray-300 {
+  color: var(--text-muted);
+}
+
+main .border-gray-100,
+main .border-gray-200,
+main .border-gray-300,
+main .border-gray-700 {
+  border-color: var(--border-color);
+}
+
+main .hover\:bg-gray-50:hover {
+  background-color: var(--bg-tertiary);
+}
+main .hover\:bg-gray-100:hover {
+  background-color: var(--bg-tertiary);
+}
+main .hover\:bg-indigo-50\/40:hover {
+  background-color: var(--bg-tertiary);
+}
+
 /* Ajustes finos — fiel ao protótipo LeadMaster v1.0 */
 body {
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -31,13 +119,13 @@ body {
   animation: toast-in 0.2s ease-out;
 }
 
-/* Scrollbar discreto no tema claro */
+/* Scrollbar discreto — segue o tema */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--text-muted);
   border-radius: 8px;
 }
 ::-webkit-scrollbar-track {

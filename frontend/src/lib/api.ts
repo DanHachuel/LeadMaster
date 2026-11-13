@@ -2,6 +2,7 @@
 
 import type {
   AppConfig,
+  Cadencia,
   Campanha,
   Lead,
   Metricas,
@@ -176,6 +177,17 @@ export const api = {
     qrUrl: () => '/api/whatsapp/qr',
     testeEnvio: (telefone: string, mensagem: string) =>
       req<{ ok: boolean; chat_id?: string }>('/whatsapp/test-send', corpo({ telefone, mensagem })),
+  },
+
+  // Cadências de follow-up
+  cadences: {
+    listar: () => req<Cadencia[]>('/cadences'),
+    criar: (dados: { nome: string; etapa_gatilho: string; dias_espera: number; acao: string; ativo?: boolean }) =>
+      req<Cadencia>('/cadences', corpo(dados)),
+    editar: (id: string, dados: Partial<Cadencia>) =>
+      req<Cadencia>(`/cadences/${id}`, { method: 'PUT', body: JSON.stringify(dados) }),
+    remover: (id: string) => req<{ ok: boolean }>(`/cadences/${id}`, { method: 'DELETE' }),
+    verificar: () => req<{ executadas: unknown[] }>('/cadences/verificar', corpo({})),
   },
 
   // Webhook
