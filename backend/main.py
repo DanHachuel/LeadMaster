@@ -14,7 +14,7 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -243,10 +243,100 @@ def metrics():
 # Leads
 # ---------------------------------------------------------------------------
 
+CORES_VALIDAS = {"blue", "amber", "violet", "green", "red", "indigo", "pink", "cyan", "gray"}
+
+
 def _validar_etapa(etapa: str) -> str:
-    if etapa not in ("leads", "em_contato", "proposta", "fechado"):
-        raise HTTPException(400, "Etapa inválida. Use: leads, em_contato, proposta ou fechado.")
+    """Etapa precisa existir nas colunas do CRM (crm_columns.json)."""
+    if not storage.etapa_valida(etapa):
+        raise HTTPException(
+            400,
+            "Etapa inválida. As colunas atuais estão em CRM → Configurações de colunas.",
+        )
     return etapa
+
+
+# ---------------------------------------------------------------------------
+# Colunas do CRM (Kanban customizável)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/crm/columns")
+def listar_colunas():
+    """Colunas do Kanban (cria as 4 padrão na primeira execução)."""
+    cols = storage.list_columns()
+    if not cols:
+        cols = [dict(c) for c in storage.COLUNAS_PADRAO]
+        storage.save_columns(cols)
+    return cols
+
+
+def _validar_colunas_payload(colunas: list) -> None:
+    if not isinstance(colunas, list) or len(colunas) == 0:
+        raise HTTPException(400, "Informe ao menos uma coluna.")
+    ids_vistos = set()
+    for col in colunas:
+        if not isinstance(col, dict):
+            raise HTTPException(400, "Cada coluna deve ser um objeto.")
+        cid = str(col.get("id") or "").strip()
+        nome = str(col.get("nome") or "").strip()
+        cor = str(col.get("cor") or "indigo").strip().lower()
+        if not cid or not nome:
+            raise HTTPException(400, "Toda coluna precisa de id e nome.")
+        if len(cid) > 40 or not cid.replace("_", "").replace("-", "").isalnum():
+            raise HTTPException(400, f"id de coluna inválido: {cid!r} (use letras, números, _ e -).")
+        if cid in ids_vistos:
+            raise HTTPException(400, f"id de coluna duplicado: {cid}")
+        if cor not in CORES_VALIDAS:
+            raise HTTPException(400, f"Cor inválida: {cor}. Use: {', '.join(sorted(CORES_VALIDAS))}.")
+        ids_vistos.add(cid)
+
+
+@app.put("/api/crm/columns")
+def salvar_colunas(colunas: list = Body(...)):
+    """Salva a lista completa de colunas (renomear/reordenar/adicionar)."""
+    _validar_colunas_payload(colunas)
+    atuais = storage.list_columns()
+    # Não é permitido remover colunas que ainda têm leads (regra de negócio).
+    ids_novos = {str(c.get("id")) for c in colunas}
+    ocupadas = [c["id"] for c in atuais if c["id"] not in ids_novos and storage.leads_na_etapa(c["id"]) > 0]
+    if ocupadas:
+        raise HTTPException(
+            400,
+            f"Não é possível remover as colunas {', '.join(ocupadas)}: ainda há leads nelas. "
+            "Mova os leads antes.",
+        )
+    cast = []
+    for col in colunas:
+        cast.append({
+            "id": str(col["id"]).strip(),
+            "nome": str(col["nome"]).strip(),
+            "cor": str(col.get("cor") or "indigo").strip().lower(),
+        })
+    storage.save_columns(cast)
+    return storage.list_columns()
+
+
+@app.delete("/api/crm/columns/{coluna_id}")
+def remover_coluna(coluna_id: str):
+    """Remove uma coluna; bloqueado (400) se houver leads nela."""
+    if not storage.get_column(coluna_id):
+        raise HTTPException(404, "Coluna não encontrada.")
+    ocupadas = storage.leads_na_etapa(coluna_id)
+    if ocupadas > 0:
+        col = storage.get_column(coluna_id)
+        raise HTTPException(
+            400,
+            f"Não é possível excluir a coluna \"{col.get('nome', coluna_id)}\" pois há {ocupadas} "
+            "lead(s) nela. Mova-os primeiro.",
+        )
+    cast = [c for c in storage.list_columns() if c["id"] != coluna_id]
+    storage.save_columns(cast)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Webhook
+# ---------------------------------------------------------------------------
 
 
 @app.get("/api/leads")

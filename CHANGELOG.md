@@ -67,6 +67,26 @@ normaliza para a forma canônica (ex.: `0.1.0`).
     o botão do Header, as variáveis CSS ou a camada de remapeamento
     desaparecerem. Suíte: **127 passed**.
 
+## [0.1.39] — 2026-11-13
+
+### Adicionado
+
+- **Colunas do Kanban customizáveis (backend):**
+  - Storage `crm_columns.json` com `[{id, nome, cor}]` e migração inicial: as 4
+    colunas atuais são criadas automaticamente, preservando os
+    `etapa: "leads"` dos leads existentes.
+  - Rotas: `GET /api/crm/columns`, `PUT /api/crm/columns` (renomear/reordenar/
+    adicionar — com validações de id único, nome não vazio e cor válida) e
+    `DELETE /api/crm/columns/{id}` — **exclusão bloqueada (400) se houver
+    leads na coluna**, também no PUT que removeria a coluna.
+  - `PUT /api/crm/leads/{id}/etapa` e criação de leads agora validam contra as
+    colunas dinâmicas (aceitando novas etapas criadas pelo usuário).
+- **13 novos testes pytest** (`backend/tests/test_crm_columns.py`): seed,
+  renomear, reordenar, adicionar, ids duplicados/cor inválida/vazio (400),
+  delete com e sem leads (200/400), PUT removendo coluna ocupada (400),
+  movimentação para etapa inexistente (400) e para coluna customizada.
+  Suíte completa: **140 passed**.
+
 ## [0.1.37] — 2026-11-12
 
 ### Adicionado

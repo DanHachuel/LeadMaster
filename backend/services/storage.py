@@ -22,6 +22,7 @@ PIPELINE_FILE = "pipeline.json"
 CONFIG_FILE = "config.json"
 AGENTS_FILE = "agents.json"
 CADENCES_FILE = "cadences.json"
+COLUMNS_FILE = "crm_columns.json"
 CHAT_HISTORY_FILE = "chat_history.json"
 
 
@@ -443,6 +444,41 @@ def clear_chat_history() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Colunas do CRM (Kanban customizável)
+# ---------------------------------------------------------------------------
+
+COLUNAS_PADRAO = [
+    {"id": "leads", "nome": "Novos Leads", "cor": "blue"},
+    {"id": "em_contato", "nome": "Em Contato", "cor": "amber"},
+    {"id": "proposta", "nome": "Proposta", "cor": "violet"},
+    {"id": "fechado", "nome": "Fechado", "cor": "green"},
+]
+
+
+def list_columns() -> list:
+    return _read(COLUMNS_FILE, [dict(c) for c in COLUNAS_PADRAO])
+
+
+def save_columns(colunas: list) -> None:
+    _write(COLUMNS_FILE, colunas)
+
+
+def get_column(coluna_id: str) -> dict | None:
+    for c in list_columns():
+        if c.get("id") == coluna_id:
+            return c
+    return None
+
+
+def etapa_valida(etapa: str) -> bool:
+    return any(c.get("id") == etapa for c in list_columns())
+
+
+def leads_na_etapa(etapa: str) -> int:
+    return sum(1 for l in list_leads() if l.get("etapa") == etapa)
+
+
+# ---------------------------------------------------------------------------
 # Cadências de follow-up
 # ---------------------------------------------------------------------------
 
@@ -576,6 +612,8 @@ def ensure_seeds() -> None:
             _write(AGENTS_FILE, DEFAULT_AGENTS)
         if not (d / CADENCES_FILE).exists():
             _write(CADENCES_FILE, [])
+        if not (d / COLUMNS_FILE).exists():
+            _write(COLUMNS_FILE, [dict(c) for c in COLUNAS_PADRAO])
 
 
 def limpar_seeds_demo() -> None:
