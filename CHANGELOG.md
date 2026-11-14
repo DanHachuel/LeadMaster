@@ -67,6 +67,30 @@ normaliza para a forma canônica (ex.: `0.1.0`).
     o botão do Header, as variáveis CSS ou a camada de remapeamento
     desaparecerem. Suíte: **127 passed**.
 
+## [0.1.40] — 2026-11-13
+
+### Adicionado
+
+- **Docs: Adicionadas Skills de prevenção de regressões no padrão OpenCode** —
+  pasta `.opencode/skills/` com 7 guias obrigatórios (lidos antes de cada tarefa
+  via aviso no topo do `AGENTS.md`):
+  - `systemic-view-guard` — mapa de dependências launcher↔backend↔frontend↔storage;
+  - `parallel-session-guard` — proibição de sessões simultâneas, verificação de
+    working tree alheio, rebase obrigatório e renumeração em colisão de versão;
+  - `surgical-scope-guard` — escopo mínimo, proibição de refatoração não
+    solicitada e lista de arquivos sensíveis;
+  - `atomic-write-guard` — toda escrita em JSON via `storage.py` (lock + tmp +
+    replace); workers relêem antes do merge;
+  - `windows-runtime-guard` — regras invioláveis do launcher (`stdio: 'inherit'`,
+    `readline`, sem `stdin.resume`/`setInterval`/dummy server/`unref`),
+    `creationflags` em subprocessos e execução a partir do `.runtime`;
+  - `contract-test-guard` — testes com `TestClient` + `tmp_path` verificando
+    comportamento real e o JSON no disco; proibição de teste por substring;
+  - `react-state-guard` — polling via TanStack Query (`refetchInterval`),
+    estado de workers vem da API, sem loops de renderização.
+- Nenhuma alteração em código funcional — apenas documentação e a referência
+  das skills no `AGENTS.md`.
+
 ## [0.1.39] — 2026-11-13
 
 ### Adicionado

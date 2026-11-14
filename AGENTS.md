@@ -1,5 +1,9 @@
 # AGENTS.md — Regras do Projeto LeadMaster
 
+> **⚠️ ATENÇÃO AGENTE:** Antes de iniciar qualquer tarefa, leia todos os arquivos em
+> `.opencode/skills/*/SKILL.md`. Eles contêm regras críticas para evitar regressões.
+> Siga-as à risca. Na dúvida, não altere.
+
 Regras obrigatórias para qualquer agente (humano ou IA) trabalhando neste repositório.
 O LeadMaster é um **SaaS local de prospecção**: CRM, extratores de leads e agentes de
 IA — instalável via `npx` e 100% local. **Não faz parte do produto:** produção de
