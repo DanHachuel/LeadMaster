@@ -398,6 +398,17 @@ def sugestoes_crm():
     return crm_agent.sugerir_movimentacoes()
 
 
+@app.post("/api/crm/leads/{lead_id}/enrich")
+def crm_enriquecer_brasilapi(lead_id: str):
+    """Enriquecimento com BrasilAPI (CNPJ): razão social, nome fantasia,
+    capital social, e-mail e primeiro sócio do QSA gravados em
+    `extras.brasilapi`. Falhas retornam 400/404 com mensagem acionável."""
+    resultado = crm_agent.enriquecer_com_brasilapi(lead_id)
+    if not resultado.get("ok"):
+        raise HTTPException(resultado.get("http", 400), resultado.get("mensagem", "Falha ao enriquecer."))
+    return resultado
+
+
 @app.post("/api/crm/sugestoes/aplicar")
 def aplicar_sugestao(dados: dict):
     lead_id, para = dados.get("lead_id"), dados.get("para")

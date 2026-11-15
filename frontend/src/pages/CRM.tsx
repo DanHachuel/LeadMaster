@@ -31,6 +31,7 @@ export function CRM() {
   const [busca, setBusca] = useState('');
   const [exportando, setExportando] = useState(false);
   const [tagFiltro, setTagFiltro] = useState('');
+  const [enriquecendoBrasilapi, setEnriquecendoBrasilapi] = useState(false);
 
   const carregar = useCallback(async () => {
     setLeads(await api.crm.leadsListar());
@@ -110,6 +111,26 @@ export function CRM() {
       await carregar();
     } catch (e) {
       toast('erro', e instanceof Error ? e.message : 'Falha ao enriquecer.');
+    }
+  };
+
+  // Enriquecimento com BrasilAPI (CNPJ): só ofertado quando há CNPJ (prevenção
+  // de erros); feedback com spinner no botão e toasts de sucesso/erro.
+  const enriquecerBrasilapi = async (lead: Lead) => {
+    setEnriquecendoBrasilapi(true);
+    try {
+      const r = await api.crm.enriquecerBrasilapi(lead.id);
+      const atualizado = r.lead ?? ({ ...lead, extras: { ...(lead.extras || {}), brasilapi: r.enriquecido } } as Lead);
+      setEditando(atualizado);
+      setTagsEdit([...(atualizado.tags || [])]);
+      setScoreEdit(atualizado.score ?? 0);
+      setObservacoes(atualizado.observacoes || '');
+      await carregar();
+      toast('sucesso', 'Dados enriquecidos com sucesso!');
+    } catch (e) {
+      toast('erro', e instanceof Error ? e.message : 'Falha ao enriquecer com a BrasilAPI.');
+    } finally {
+      setEnriquecendoBrasilapi(false);
     }
   };
 
@@ -416,6 +437,12 @@ export function CRM() {
               <Dado rotulo="Seguidores" valor={dadoExtra(editando, 'seguidores', 'followers')} />
               <Dado rotulo="Username" valor={dadoExtra(editando, 'username', 'handle')} />
               <Dado rotulo="Bio" valor={dadoExtra(editando, 'bio', 'biography')} />
+              {/* Dados da BrasilAPI (aparecem após o enriquecimento) */}
+              <Dado rotulo="Razão Social" valor={dadoBrasilapi(editando, 'razao_social')} />
+              <Dado rotulo="Nome Fantasia" valor={dadoBrasilapi(editando, 'nome_fantasia')} />
+              <Dado rotulo="Sócio Principal" valor={dadoBrasilapi(editando, 'socio_principal')} />
+              <Dado rotulo="E-mail (BrasilAPI)" valor={dadoBrasilapi(editando, 'email')} />
+              <Dado rotulo="Capital Social" valor={capitalFormatado(editando)} />
               <div className="md:col-span-2 flex flex-wrap gap-1.5">
                 {(editando.tags || []).map((tag) => (
                   <span key={tag} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
@@ -536,9 +563,23 @@ export function CRM() {
             </div>
 
             <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
-              <button onClick={() => enriquecer(editando)} className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-                <i className="fas fa-wand-magic-sparkles mr-1" /> Enriquecer com IA
-              </button>
+              <div className="flex items-center gap-3">
+                {/* BrasilAPI: azul para destacar da ação de IA (von Restorff) */}
+                {temCnpj(editando) && (
+                  <button
+                    onClick={() => enriquecerBrasilapi(editando)}
+                    disabled={enriquecendoBrasilapi}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:opacity-60"
+                    title="Buscar sócios, capital social e e-mail na BrasilAPI"
+                  >
+                    <i className={cn('fas fa-building-columns mr-1', enriquecendoBrasilapi && 'fa-spin')} />
+                    {enriquecendoBrasilapi ? 'Enriquecendo...' : 'Enriquecer com BrasilAPI'}
+                  </button>
+                )}
+                <button onClick={() => enriquecer(editando)} className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+                  <i className="fas fa-wand-magic-sparkles mr-1" /> Enriquecer com IA
+                </button>
+              </div>
               {/* Salvar grande em gradiente (Fitts + von Restorff) */}
               <button
                 onClick={salvarDetalhes}
@@ -574,6 +615,31 @@ function dadoExtra(lead: Lead, ...chaves: string[]): string {
     }
   }
   return '';
+}
+
+/** Dado gravado em extras.brasilapi (enriquecimento). */
+function dadoBrasilapi(lead: Lead, chave: string): string {
+  const br = (lead.extras?.brasilapi || {}) as Record<string, unknown>;
+  const valor = br[chave];
+  return valor === undefined || valor === null || valor === '' ? '' : String(valor);
+}
+
+/** Capital social em BRL (vazio quando não enriquecido). */
+function capitalFormatado(lead: Lead): string {
+  const cs = dadoBrasilapi(lead, 'capital_social');
+  if (!cs) return '';
+  const n = Number(cs);
+  return Number.isFinite(n) && n > 0
+    ? n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+    : cs;
+}
+
+/** Prevenção de erros: só oferece enriquecimento quando há CNPJ (14 dígitos). */
+function temCnpj(lead: Lead | null): boolean {
+  if (!lead) return false;
+  const extras = (lead.extras || {}) as Record<string, unknown>;
+  const bruto = String(extras.cnpj ?? lead.cnpj ?? '');
+  return bruto.replace(/\D/g, '').length === 14;
 }
 
 function Campo({

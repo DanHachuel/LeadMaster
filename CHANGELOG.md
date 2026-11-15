@@ -6,6 +6,39 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.44] — 2026-11-15
+
+### Adicionado
+
+- **Enriquecimento de leads com BrasilAPI (CNPJ):**
+  - Rota **`POST /api/crm/leads/{lead_id}/enrich`** (`crm_agent.enriquecer_com_brasilapi`):
+    lê o CNPJ de `extras.cnpj` (ou do campo top-level, normalizando pontuação),
+    consulta `https://brasilapi.com.br/api/cnpj/v1/{cnpj}` (pública, sem chave) e
+    grava em **`extras.brasilapi`**: `razao_social`, `nome_fantasia`,
+    `capital_social`, `email`, **primeiro sócio do QSA** (`socio_principal`) e o
+    timestamp da consulta. Campos top-level vazios (`empresa`, `email`) também
+    são preenchidos — nunca sobrescreve o existente. Escrita atômica via
+    `storage.update_lead` (regra do `atomic-write-guard`).
+  - **Falhas nunca silenciosas:** CNPJ não encontrado → 400; **429 (rate limit
+    da BrasilAPI)** → 400 com "aguarde um minuto"; timeout/indisponível → 400
+    com motivo; lead sem CNPJ válido → 400; lead inexistente → 404.
+  - **Modal do CRM:** botão **"Enriquecer com BrasilAPI"** em **azul**
+    (von Restorff — distinto do "Enriquecer com IA" e do "Salvar" em gradiente),
+    exibido **somente quando o lead tem CNPJ de 14 dígitos** (prevenção de
+    erros), com **spinner** ("Enriquecendo...") durante a chamada
+    (Zeigarnik), toast verde *"Dados enriquecidos com sucesso!"* e toast
+    vermelho na falha; o modal é atualizado na hora com os dados retornados.
+  - Modal exibe os novos dados: **Razão Social, Nome Fantasia, Sócio Principal,
+    E-mail (BrasilAPI) e Capital Social** formatado em BRL.
+- **7 novos testes pytest** (`backend/tests/test_enrich_brasilapi.py`) com
+  `httpx.get` mockado (`unittest.mock`): dados gravados em `extras.brasilapi` +
+  top-level, CNPJ dentro de `extras` com pontuação, 404 → 400, 429 → 400,
+  timeout → 400, lead sem CNPJ → 400 e lead inexistente → 404.
+  Suíte: **152 passed**.
+- **Validado ao vivo (servidor real):** rota responde 200/400 conforme o caso;
+  um teste real contra a BrasilAPI pública esgotou o limite (429) e voltou a
+  mensagem acionável — tratamento de rate limit comprovado em produção.
+
 ## [0.1.43] — 2026-11-15
 
 ### Adicionado

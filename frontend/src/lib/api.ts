@@ -79,6 +79,11 @@ export const api = {
   crm: {
     leadsListar: (tag?: string) => req<Lead[]>(tag ? `/crm/leads?tag=${encodeURIComponent(tag)}` : '/crm/leads'),
     criarLead: (lead: Partial<Lead>) => req<Lead>('/crm/leads', corpo(lead)),
+    enriquecerBrasilapi: (id: string) =>
+      req<{ ok: boolean; lead: Lead; enriquecido: Record<string, unknown>; mensagem: string }>(
+        `/crm/leads/${id}/enrich`,
+        corpo({}),
+      ),
     editarLead: (id: string, dados: Partial<Lead>) =>
       req<Lead>(`/crm/leads/${id}`, { method: 'PUT', body: JSON.stringify(dados) }),
     exportarCsvUrl: () => '/api/crm/leads/export',

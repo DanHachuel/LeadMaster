@@ -173,3 +173,101 @@ def calcular_completude(lead: dict) -> int:
     campos = ["nome", "telefone", "email", "empresa", "cidade", "observacoes"]
     preenchidos = sum(1 for c in campos if (lead.get(c) or "").strip())
     return int(round(preenchidos / len(campos) * 100))
+
+
+# ---------------------------------------------------------------------------
+# Enriquecimento com BrasilAPI (dados abertos de CNPJ)
+# ---------------------------------------------------------------------------
+
+def _cnpj_do_lead(lead: dict) -> str:
+    """CNPJ em `extras.cnpj` (padrão dos extratores) ou no campo top-level."""
+    extras = lead.get("extras") or {}
+    bruto = extras.get("cnpj") or lead.get("cnpj") or ""
+    return "".join(c for c in str(bruto) if c.isdigit())
+
+
+def enriquecer_com_brasilapi(lead_id: str) -> dict:
+    """Enriquece o lead consultando a BrasilAPI (pública, sem chave).
+
+    Grava em `extras.brasilapi` os dados retornados (razão social, nome
+    fantasia, capital social, e-mail e o primeiro sócio do QSA) e preenche
+    campos top-level vazios (empresa/e-mail) para o lead ficar mais completo.
+    Falhas retornam {ok: False, http: 400|404, mensagem} com texto acionável —
+    nunca quebram o app.
+    """
+    lead = None
+    for l in storage.list_leads():
+        if l.get("id") == lead_id:
+            lead = l
+            break
+    if not lead:
+        return {"ok": False, "http": 404, "mensagem": "Lead não encontrado."}
+
+    cnpj = _cnpj_do_lead(lead)
+    if len(cnpj) != 14:
+        return {
+            "ok": False,
+            "http": 400,
+            "mensagem": "Lead sem CNPJ válido (14 dígitos) — não há o que enriquecer na BrasilAPI.",
+        }
+
+    try:
+        r = httpx.get(f"https://brasilapi.com.br/api/cnpj/v1/{cnpj}", timeout=15)
+    except httpx.HTTPError as e:
+        return {
+            "ok": False,
+            "http": 400,
+            "mensagem": f"BrasilAPI indisponível ({e}). Tente novamente em instantes.",
+        }
+    if r.status_code == 404:
+        return {"ok": False, "http": 400, "mensagem": f"CNPJ {cnpj} não encontrado na BrasilAPI."}
+    if r.status_code == 429:
+        return {
+            "ok": False,
+            "http": 400,
+            "mensagem": "BrasilAPI com limite de requisições (429). Aguarde um minuto e tente de novo.",
+        }
+    if r.status_code >= 400:
+        return {
+            "ok": False,
+            "http": 400,
+            "mensagem": f"BrasilAPI respondeu HTTP {r.status_code}: {r.text[:200]}",
+        }
+    try:
+        d = r.json()
+    except ValueError:
+        return {"ok": False, "http": 400, "mensagem": "BrasilAPI devolveu resposta inválida."}
+
+    qsa = d.get("qsa") or []
+    socio = ""
+    for s in qsa:
+        if isinstance(s, dict) and (s.get("nome_socio") or "").strip():
+            socio = s["nome_socio"].strip()
+            break
+
+    enriquecido = {
+        "cnpj": cnpj,
+        "razao_social": (d.get("razao_social") or "").strip(),
+        "nome_fantasia": (d.get("nome_fantasia") or "").strip(),
+        "capital_social": d.get("capital_social"),
+        "email": (d.get("email") or "").strip(),
+        "socio_principal": socio,
+        "consultado_em": storage.now_iso(),
+    }
+
+    patch: dict = {"extras": {**(lead.get("extras") or {}), "brasilapi": enriquecido}}
+    # Campos top-level vazios ficam mais completos (nunca sobrescreve o existente).
+    if not (lead.get("empresa") or "").strip():
+        patch["empresa"] = enriquecido["nome_fantasia"] or enriquecido["razao_social"]
+    if not (lead.get("empresa") or "").strip() and not (lead.get("nome") or "").strip():
+        patch["nome"] = enriquecido["razao_social"] or enriquecido["nome_fantasia"] or lead.get("nome")
+    if not (lead.get("email") or "").strip() and enriquecido["email"]:
+        patch["email"] = enriquecido["email"]
+
+    atualizado = storage.update_lead(lead_id, patch)
+    return {
+        "ok": True,
+        "lead": atualizado,
+        "enriquecido": enriquecido,
+        "mensagem": "Dados enriquecidos com a BrasilAPI.",
+    }
