@@ -6,6 +6,25 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.43] — 2026-11-15
+
+### Adicionado
+
+- **Regra absoluta de execução nativa (Windows + Linux):**
+  - `AGENTS.md`: nova regra no topo do arquivo — *"🚨 REGRA ABSOLUTA: O projeto DEVE
+    ter execução nativa obrigatória no Windows E no Linux. É TERMINANTEMENTE
+    PROIBIDO impor o uso de Docker, WSL, Kubernetes ou contêineres como requisito
+    para desenvolvimento ou execução. Qualquer tecnologia deve funcionar
+    nativamente nos dois sistemas."* Docker/contêineres seguem como opção extra do
+    usuário, nunca requisito.
+  - Skill `windows-runtime-guard`: título/escopo renomeado para **Runtime Guard —
+    Windows + Linux (Execução Nativa Obrigatória)** e nova seção *"Execução nativa
+    Windows + Linux"* — caminhos com `path.join`/`pathlib` e proibição de exigir
+    Docker; banco de dados futuro, se necessário, será **SQLite (nativo)** ou
+    instalação direta.
+- **Sem alteração de código** — apenas documentação de regras (`AGENTS.md` +
+  `SKILL.md`), escopo mínimo.
+
 ## [0.1.42] — 2026-11-15
 
 ### Corrigido

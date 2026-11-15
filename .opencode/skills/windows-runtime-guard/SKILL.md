@@ -1,8 +1,9 @@
-# Skill: Windows Runtime Guard (Ambiente Hostil)
+# Skill: Runtime Guard — Windows + Linux (Execução Nativa Obrigatória)
 
-**Propósito:** blindar o app contra Windows + MobaXterm. Este binômio foi responsável
-por semanas de dor no Thunderbolt (app morrendo sozinho, janelas de CMD piscando,
-EBUSY no npx). As regras abaixo são **invioláveis** e estão no AGENTS.md.
+**Propósito:** blindar o app contra ambientes hostis de terminal (Windows + MobaXterm
+foi o binômio responsável por semanas de dor no Thunderbolt — app morrendo sozinho,
+janelas de CMD piscando, EBUSY no npx) **e** garantir compatibilidade nativa em
+Windows **e** Linux. As regras abaixo são **invioláveis** e estão no AGENTS.md.
 
 ## 1. Launcher (`scripts/cli.mjs`)
 
@@ -46,7 +47,16 @@ EBUSY no npx). As regras abaixo são **invioláveis** e estão no AGENTS.md.
 - npm no Windows: dentro de PowerShell use sempre **`npm.cmd`** (o `npm.ps1` está
   bloqueado pela execution policy).
 
-## 4. Diagnóstico rápido
+## 4. Execução nativa Windows + Linux (regra absoluta)
+
+- O código deve ser compatível com **Windows e Linux** — caminhos sempre com
+  `path.join` (Node) ou `pathlib` (Python); nunca concatenar com `\` ou `/` na mão.
+- **É proibido exigir Docker** (ou WSL, Kubernetes, contêineres) para rodar o app —
+  a execução nativa é obrigatória nos dois sistemas. Se um banco de dados for
+  necessário no futuro, use **SQLite (nativo)** ou instalação direta, nunca
+  contêiner como requisito. Contêineres seguem como opção extra do usuário.
+
+## 5. Diagnóstico rápido
 
 ```cmd
 node scripts/cli.mjs doctor

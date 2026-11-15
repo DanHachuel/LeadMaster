@@ -4,6 +4,13 @@
 > `.opencode/skills/*/SKILL.md`. Eles contêm regras críticas para evitar regressões.
 > Siga-as à risca. Na dúvida, não altere.
 
+> **🚨 REGRA ABSOLUTA: O projeto DEVE ter execução nativa obrigatória no Windows E no
+> Linux. É TERMINANTEMENTE PROIBIDO impor o uso de Docker, WSL, Kubernetes ou
+> contêineres como requisito para desenvolvimento ou execução. Qualquer tecnologia
+> deve funcionar nativamente nos dois sistemas.** O Windows é o ambiente atual de
+> desenvolvimento; o Linux, o futuro ambiente de produção/VPS. Docker/WSL/contêineres
+> são permitidos apenas como **opção extra do usuário**, nunca como requisito.
+
 Regras obrigatórias para qualquer agente (humano ou IA) trabalhando neste repositório.
 O LeadMaster é um **SaaS local de prospecção**: CRM, extratores de leads e agentes de
 IA — instalável via `npx` e 100% local. **Não faz parte do produto:** produção de
