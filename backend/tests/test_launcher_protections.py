@@ -1,10 +1,13 @@
 """Gate de regressão da arquitetura do launcher (scripts/cli.mjs).
 
-Modelo vigente (0.1.34): TERMINAL PRESO (foreground). O servidor sobe com
-`stdio: 'inherit'` (logs do FastAPI no terminal em tempo real) e o launcher
-fica preso pelo `readline` — que também captura o Ctrl+C de forma limpa
-(mata o worker por código e remove o lock). São PROIBIDOS os keep-alives do
-modelo anterior (setInterval, stdin.resume, dummy server, beforeExit,
+Modelo vigente (0.1.42): TERMINAL PRESO (foreground). O servidor sobe com
+`stdio: 'inherit'` (logs do FastAPI em tempo real no terminal) e o launcher
+fica preso pelo `readline` em escopo de MÓDULO (referência viva — sem GC) —
+que também captura o Ctrl+C de forma limpa (mata o worker por código e
+remove o lock). Falhas NUNCA são silenciosas: `child.on('error')` e
+`child.on('exit')` logam o motivo, o runtime é verificado antes do spawn e
+EOF na entrada não derruba o processo. São PROIBIDOS os keep-alives do modelo
+anterior (setInterval, stdin.resume, dummy server, beforeExit,
 await new Promise) e o `child.unref()` do modelo descartável.
 """
 
@@ -45,12 +48,16 @@ class TestLauncherProtections:
         assert "logFd" not in corpo  # nada de saída em arquivo
 
     def test_terminal_preso_por_readline(self):
+        c = _conteudo()
         corpo = _corpo_cmd_start()
-        assert "import readline from 'node:readline'" in _conteudo()
+        assert "import readline from 'node:readline'" in c
         assert "readline.createInterface" in corpo
-        assert "rl.on('SIGINT'" in corpo  # Ctrl+C limpo
+        # A interface vive em escopo de MÓDULO (referência viva — sem GC).
+        assert "let readlineUi" in c
+        assert "readlineUi = readline.createInterface" in corpo
+        assert "readlineUi.on('SIGINT'" in corpo  # Ctrl+C limpo
         # O handler de Ctrl+C mata o worker e remove o lock (nunca órfã).
-        inicio = corpo.index("rl.on('SIGINT'")
+        inicio = corpo.index("readlineUi.on('SIGINT'")
         fim = corpo.index("});", inicio)
         handler = corpo[inicio:fim]
         assert "pararTudo(" in handler or "matarArvoreProcesso" in handler
@@ -125,3 +132,40 @@ class TestLauncherProtections:
         corpo = _corpo_cmd_start()
         assert "detached: true" in corpo  # grupo próprio: Ctrl+C não o derruba
         assert "windowsHide: true" in corpo  # nunca janela de console
+
+    # ------------------------------------------------------------------
+    # Diagnóstico de falha silenciosa (regressão da 0.1.42)
+    # ------------------------------------------------------------------
+
+    def test_captura_de_erro_no_spawn(self):
+        corpo = _corpo_cmd_start()
+        # Sem listener, erro de spawn virava exceção silenciosa.
+        assert "child.on('error'" in corpo
+        assert "ERRO CRÍTICO AO INICIAR O PYTHON" in corpo
+        inicio = corpo.index("child.on('error'")
+        fim = corpo.index("});", inicio)
+        handler = corpo[inicio:fim]
+        assert "process.exit(1)" in handler
+
+    def test_morte_do_servidor_nao_e_silenciosa(self):
+        corpo = _corpo_cmd_start()
+        # Crash do uvicorn DEVE avisar no terminal antes de liberar o prompt.
+        assert "child.on('exit'" in corpo
+        assert "Servidor local encerrou" in corpo
+
+    def test_runtime_verificado_antes_do_spawn(self):
+        corpo = _corpo_cmd_start()
+        assert "Runtime corrompido" in corpo  # mensagem acionável
+        assert "backend', 'main.py'" in corpo or "backend', \"main.py\"" in corpo
+
+    def test_handlers_globais_com_exit(self):
+        c = _conteudo()
+        # uncaughtException encerra com código (nunca silencioso).
+        assert "process.on('uncaughtException'" in c
+        assert "process.exit(1)" in c
+
+    def test_eof_do_stdin_nao_derruba_o_launcher(self):
+        corpo = _corpo_cmd_start()
+        # EOF na entrada (wrapper do npx) NÃO pode matar o launcher.
+        assert "readlineUi.on('close'" in corpo
+        assert "EOF" in corpo

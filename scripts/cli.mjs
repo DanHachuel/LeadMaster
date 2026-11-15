@@ -40,11 +40,18 @@ import http from 'node:http';
 // NUNCA REMOVER (regra inviolável do AGENTS.md).
 // ---------------------------------------------------------------------------
 process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled Rejection:', reason);
+  console.error('❌ Unhandled Rejection:', reason);
 });
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
+  // Erro inesperado NUNCA pode ser silencioso: loga o motivo e encerra com
+  // código 1 (o terminal é liberado com explicação, não sem ela).
+  console.error('❌ Uncaught Exception:', err && err.stack ? err.stack : err);
+  process.exit(1);
 });
+
+// Interface readline mantida em escopo de módulo: referência viva impede a
+// coleção pelo GC enquanto o launcher segura o terminal (foreground).
+let readlineUi = null;
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -624,8 +631,34 @@ function cmdStart(args) {
     // do cache do npx (EBUSY na próxima instalação). Sem runtime pronto, o
     // start se auto-aprovisiona copiando para <home>/.runtime; com runtime
     // pronto, reutiliza (sem recopiar nada).
-    const runtime = runtimePronto(home) ? runtimeDir(home) : copiarParaRuntime(home);
+    let runtime;
+    try {
+      runtime = runtimePronto(home) ? runtimeDir(home) : copiarParaRuntime(home);
+    } catch (err) {
+      // Falha ao copiar (permissão, disco, PATH)? Mensagem acionável — nunca
+      // um erro genérico que deixa o usuário sem saber o que fazer.
+      console.error('✗ Runtime corrompido. Rode o comando install novamente:');
+      console.error(`  npx --yes @danhachuel/leadmaster@${VERSION} install`);
+      console.error(`  (falha ao preparar ${runtimeDir(home)}: ${err && err.message ? err.message : err})`);
+      process.exit(1);
+    }
     console.log(`✓ Executando a partir do runtime permanente: ${runtime}`);
+
+    // Verificação pré-spawn: sem o main.py no runtime, o uvicorn morreria na
+    // hora e o síntoma seria "prompt volta sem logs" — checamos ANTES para
+    // dar uma mensagem acionável em vez de falha silenciosa.
+    const mainRuntime = path.join(runtime, 'backend', 'main.py');
+    if (!existsSync(mainRuntime)) {
+      console.error('✗ Runtime corrompido. Rode o comando install novamente:');
+      console.error(`  npx --yes @danhachuel/leadmaster@${VERSION} install`);
+      console.error(`  (arquivo ausente: ${mainRuntime})`);
+      process.exit(1);
+    }
+    if (!python || !python.cmd) {
+      console.error('✗ Interpretador Python não identificado. Rode "npx @danhachuel/leadmaster doctor".');
+      process.exit(1);
+    }
+    console.log(`→ Python: ${python.cmd} ${python.args.join(' ')} (cwd: ${path.join(runtime, 'backend')})`);
 
     // -------------------------------------------------------------------------
     // Terminal PRESO (foreground — regra inviolável do AGENTS.md).
@@ -649,6 +682,27 @@ function cmdStart(args) {
       stdio: 'inherit', // logs do FastAPI em tempo real no terminal
       detached: true,
       windowsHide: true,
+    });
+
+    // Captura de falhas do spawn (regra inviolável): sem listener, um erro
+    // de spawn virava exceção silenciosa e o launcher morria sem explicação.
+    child.on('error', (err) => {
+      console.error('❌ ERRO CRÍTICO AO INICIAR O PYTHON:', err && err.message ? err.message : err);
+      console.error(`  Comando tentado: ${python.cmd} ${python.args.join(' ')} -m uvicorn main:app`);
+      console.error(`  Diretório: ${path.join(runtime, 'backend')}`);
+      console.error('  Rode "npx @danhachuel/leadmaster doctor" para diagnosticar o ambiente.');
+      removerLock(home);
+      process.exit(1);
+    });
+
+    // Se o servidor morrer (crash, dependência, porta tomada), o terminal é
+    // liberado COM o código/motivo — nunca silenciosamente.
+    child.on('exit', (code, signal) => {
+      const motivo = signal ? `sinal ${signal}` : `código ${code}`;
+      console.error(`✗ Servidor local encerrou (${motivo}).`);
+      console.error('  Veja os logs acima; rode "npx @danhachuel/leadmaster doctor" para diagnóstico.');
+      removerLock(home);
+      process.exit(code === null || code === undefined ? 1 : code);
     });
 
     // Lock global: PID do backend + porta (permite `kill` externo e o kill
@@ -680,10 +734,18 @@ function cmdStart(args) {
     // limpa. O worker (grupo isolado) não recebe o Ctrl+C direto — quem o
     // encerra é o handler abaixo. SIGTERM/SIGBREAK seguem como paradas
     // legítimas por código.
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.on('SIGINT', () => {
+    // Referência guardada no escopo de módulo (readlineUi): o GC do Node não
+    // pode coletar a interface enquanto o terminal precisa ficar preso.
+    readlineUi = readline.createInterface({ input: process.stdin, output: process.stdout });
+    readlineUi.on('SIGINT', () => {
       console.log('\nEncerrando LeadMaster...');
       pararTudo(0);
+    });
+    readlineUi.on('close', () => {
+      // stdin chegou ao fim (EOF — ex.: wrapper do npx fechando a entrada):
+      // NÃO é hora de morrer. Quem segura o processo agora é o filho Python
+      // (referencial, sem unref); se ele cair, o listener 'exit' avisa.
+      console.log('ℹ Entrada do terminal fechada (EOF) — o servidor continua no ar; encerre com kill ou Ctrl+C.');
     });
     process.on('SIGTERM', () => pararTudo(0));
     if (platform() === 'win32') {

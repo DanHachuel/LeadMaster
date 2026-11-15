@@ -10,8 +10,20 @@ EBUSY no npx). As regras abaixo são **invioláveis** e estão no AGENTS.md.
   são o canal que derrubava tudo quando a PTY do MobaXterm morria).
 - O worker nasce com **`detached: true`** (grupo de processos próprio) +
   **`windowsHide: true`** — nunca abre janela de console.
-- Terminal preso via **`readline.createInterface`**; Ctrl+C é tratado pelo handler
-  `SIGINT` (mata a árvore do worker). `SIGTERM`/`SIGBREAK` são paradas legítimas.
+- Terminal preso via **`readline.createInterface`** guardado em **variável de escopo
+  de módulo** (`readlineUi`, referência viva — o GC do Node não pode coletá-la);
+  Ctrl+C é tratado pelo handler `SIGINT` (mata a árvore do worker).
+  `SIGTERM`/`SIGBREAK` são paradas legítimas.
+- **Falha NUNCA é silenciosa (obrigatório):**
+  - **`child.on('error')`** no spawn — sem listener, erro de spawn virava exceção
+    silenciosa e o launcher morria sem explicação (regressão da 0.1.41);
+  - **`child.on('exit')`** loga código/sinal do crash antes de liberar o terminal;
+  - **verificação do runtime antes do spawn** (`<runtime>/backend/main.py`) com a
+    mensagem acionável *"Runtime corrompido. Rode o comando install novamente"*;
+  - `process.on('uncaughtException')` loga **e encerra com código 1**;
+  - `readlineUi.on('close')` trata **EOF do stdin** (wrapper do npx fechando a
+    entrada): o launcher NÃO morre — quem segura o processo é o filho Python
+    referencial (sem `unref`).
 - **Proibidos:** `stdin.resume()`, `setInterval` de keep-alive, `http.createServer`
   (dummy server), `beforeExit`, `await new Promise(...)`, `child.unref()`.
 - Existe o gate de regressão `backend/tests/test_launcher_protections.py` que falha se
