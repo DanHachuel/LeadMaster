@@ -7,13 +7,23 @@ Windows **e** Linux. As regras abaixo são **invioláveis** e estão no AGENTS.m
 
 ## 1. Launcher (`scripts/cli.mjs`)
 
-- O servidor Python sobe com **`stdio: 'inherit'`** — nunca `pipe` (pipes no terminal
-  são o canal que derrubava tudo quando a PTY do MobaXterm morria).
-- O worker nasce com **`detached: true`** (grupo de processos próprio) +
-  **`windowsHide: true`** — nunca abre janela de console.
-- Terminal preso via **`readline.createInterface`** guardado em **variável de escopo
-  de módulo** (`readlineUi`, referência viva — o GC do Node não pode coletá-la);
-  Ctrl+C é tratado pelo handler `SIGINT` (mata a árvore do worker).
+- **`stdio: 'inherit'` FALHA sob o `npx.cmd` no Windows** (stdin/stdout empipados
+  pelo wrapper): a saída do uvicorn engolia no teardown da PTY e o sintoma era
+  "banner aparece, logs não aparecem, prompt volta". **Use sempre
+  `stdio: ['ignore', 'pipe', 'pipe']` + encaminhamento manual** — o launcher
+  captura cada byte de stdout/stderr do filho, reimprime com prefixo `[api]` e
+  espelha em `storage/logs/backend.log`. Assim um crash do Python (ImportError,
+  RuntimeError, porta tomada) mostra o **traceback completo** e o código de
+  saída, nunca silêncio.
+- O worker nasce com **`detached: true`** (grupo de processos próprio — imune a
+  Ctrl+C do terminal) + **`windowsHide: true`**. NUNCA `detached: false`.
+- **Terminal preso por DUAS âncoras independentes:** (a) o handle referencial do
+  filho (vive enquanto o servidor vive) e (b) um `setInterval` **NÃO-unref'd**
+  criado após o health OK e limpo no cleanup — âncora bruta de event loop que
+  sobrevive a stdin fechado/EOF sob o npx.cmd.
+- Terminal preso também via **`readline.createInterface`** guardado em **variável
+  de escopo de módulo** (`readlineUi`, referência viva — o GC do Node não pode
+  coletá-la); Ctrl+C é tratado pelo handler `SIGINT` (mata a árvore do worker).
   `SIGTERM`/`SIGBREAK` são paradas legítimas.
 - **Falha NUNCA é silenciosa (obrigatório):**
   - **`child.on('error')`** no spawn — sem listener, erro de spawn virava exceção
@@ -25,8 +35,9 @@ Windows **e** Linux. As regras abaixo são **invioláveis** e estão no AGENTS.m
   - `readlineUi.on('close')` trata **EOF do stdin** (wrapper do npx fechando a
     entrada): o launcher NÃO morre — quem segura o processo é o filho Python
     referencial (sem `unref`).
-- **Proibidos:** `stdin.resume()`, `setInterval` de keep-alive, `http.createServer`
-  (dummy server), `beforeExit`, `await new Promise(...)`, `child.unref()`.
+- **Proibidos:** `stdin.resume()`, `http.createServer` (dummy server),
+  `beforeExit`, `await new Promise(...)`, `child.unref()`, `detached: false`.
+  (`setInterval` agora é PERMITIDO como âncora secundária — ver acima.)
 - Existe o gate de regressão `backend/tests/test_launcher_protections.py` que falha se
   qualquer uma dessas regras desaparecer ou se um proibido voltar.
 

@@ -42,10 +42,16 @@ class TestLauncherProtections:
     # Espinha dorsal do modelo foreground
     # ------------------------------------------------------------------
 
-    def test_stdio_inherit_logs_no_terminal(self):
+    def test_pipe_manual_com_encaminhamento(self):
+        # Regra 0.1.45: sob o npx.cmd o `inherit` engolia a saída do uvicorn
+        # quando a PTY morria. Agora o filho sobe com pipe e o launcher
+        # encaminha CADA byte manualmente (+ espelho em backend.log), então um
+        # crash do Python NUNCA fica invisível.
         corpo = _corpo_cmd_start()
-        assert "stdio: 'inherit'" in corpo  # logs do FastAPI em tempo real
-        assert "logFd" not in corpo  # nada de saída em arquivo
+        assert "stdio: ['ignore', 'pipe', 'pipe']" in corpo
+        assert "child.stdout.on('data'" in corpo
+        assert "child.stderr.on('data'" in corpo
+        assert "backend.log" in corpo
 
     def test_terminal_preso_por_readline(self):
         c = _conteudo()
@@ -75,13 +81,18 @@ class TestLauncherProtections:
     # Fim dos modelos anteriores: keep-alives e unref são PROIBIDOS
     # ------------------------------------------------------------------
 
-    def test_proibido_keepalive_antigo(self):
+    def test_ancora_secundaria_setinterval(self):
+        # Regra 0.1.45 (pedido do usuário): âncora bruta de event loop —
+        # setInterval NÃO-unref'd, criado só depois do health OK e limpado no
+        # cleanup. É a SEGUNDA âncora (a primeira é o handle do filho).
         codigo = _codigo_sem_comentarios()
+        assert "keepAlive = setInterval(() => {}, 1000)" in codigo
+        assert "clearInterval(keepAlive)" in codigo
+        # Proibidos seguem proibidos.
         for proibido in (
             "process.stdin.resume",
             "http.createServer",  # dummy server
             "await new Promise",  # congelamento do fluxo
-            "setInterval",  # keep-alive de timer
             "beforeExit",
         ):
             assert proibido not in codigo, f"keep-alive proibido voltou: {proibido}"
@@ -90,11 +101,10 @@ class TestLauncherProtections:
         codigo = _codigo_sem_comentarios()
         assert "child.unref" not in codigo  # modelo background/descartável saiu
 
-    def test_proibido_stdio_pipe_no_servidor(self):
-        codigo = _codigo_sem_comentarios()
+    def test_worker_isolado(self):
         corpo = _corpo_cmd_start()
-        assert "stdio: 'pipe'" not in corpo
-        assert "stdio: ['ignore', 'pipe', 'pipe']" not in corpo
+        assert "detached: true" in corpo  # grupo próprio: Ctrl+C não o derruba
+        assert "windowsHide: true" in corpo  # nunca janela de console
 
     # ------------------------------------------------------------------
     # Lock file + comando kill + kill switch (continuam valendo)
@@ -127,15 +137,6 @@ class TestLauncherProtections:
         assert "encerrarInstanciaAnterior" in c
         assert "netstat" in c or "lsof" in c
         assert "já está rodando" not in c
-
-    def test_worker_isolado(self):
-        corpo = _corpo_cmd_start()
-        assert "detached: true" in corpo  # grupo próprio: Ctrl+C não o derruba
-        assert "windowsHide: true" in corpo  # nunca janela de console
-
-    # ------------------------------------------------------------------
-    # Diagnóstico de falha silenciosa (regressão da 0.1.42)
-    # ------------------------------------------------------------------
 
     def test_captura_de_erro_no_spawn(self):
         corpo = _corpo_cmd_start()

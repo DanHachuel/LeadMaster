@@ -662,13 +662,18 @@ function cmdStart(args) {
 
     // -------------------------------------------------------------------------
     // Terminal PRESO (foreground — regra inviolável do AGENTS.md).
-    // O servidor sobe com stdio 'inherit' (logs do FastAPI em tempo real no
-    // terminal) e o launcher fica preso pelo readline abaixo — sem
-    // setInterval/stdin.resume/dummy server. O worker nasce em grupo próprio
-    // (detached): o Ctrl+C do terminal não o derruba direto; quem encerra é
-    // o handler 'SIGINT' do readline, que mata o filho por código e remove o
-    // lock. O lock global continua permitindo `kill` externo.
+    // O Python sobe com stdio em PIPE encaminhado manualmente: sob `npx.cmd`
+    // (stdin/stdout empipados pelo wrapper) o `inherit` podia engolir a saída
+    // quando a PTY morria — com pipe + forwarding, CADA byte do uvicorn passa
+    // pelo launcher (protegido contra EPIPE) e é espelhado em
+    // storage/logs/backend.log, então um crash do Python NUNCA fica invisível.
+    // O worker nasce em grupo próprio (detached: true): o Ctrl+C do terminal
+    // não o derruba direto; quem encerra é o handler de sinal, que mata a
+    // árvore por código e remove o lock. O terminal é seguro por DUAS âncoras
+    // independentes: o handle referencial do filho e um setInterval secundário.
     // -------------------------------------------------------------------------
+    const logPath = path.join(home, 'storage', 'logs', 'backend.log');
+    mkdirSync(path.dirname(logPath), { recursive: true });
     const child = spawn(python.cmd, [...python.args, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(porta), '--no-access-log'], {
       cwd: path.join(runtime, 'backend'),
       env: {
@@ -679,10 +684,27 @@ function cmdStart(args) {
         PYTHONUTF8: '1',
         PYTHONIOENCODING: 'utf-8',
       },
-      stdio: 'inherit', // logs do FastAPI em tempo real no terminal
+      stdio: ['ignore', 'pipe', 'pipe'], // capturamos e encaminhamos manualmente
       detached: true,
       windowsHide: true,
     });
+
+    // Encaminhamento manual dos streams + espelho em arquivo (diagnóstico).
+    const encaminhar = (buf, tag) =>
+      buf
+        .toString('utf8')
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .forEach((linha) => {
+          console.log(`[${tag}] ${linha}`);
+          try {
+            appendFileSync(logPath, `[${tag}] ${linha}\n`);
+          } catch {
+            /* espelho de log é best-effort */
+          }
+        });
+    child.stdout.on('data', (d) => encaminhar(d, 'api'));
+    child.stderr.on('data', (d) => encaminhar(d, 'api'));
 
     // Captura de falhas do spawn (regra inviolável): sem listener, um erro
     // de spawn virava exceção silenciosa e o launcher morria sem explicação.
@@ -709,7 +731,11 @@ function cmdStart(args) {
     // switch do próximo start).
     escreverLock(home, child.pid ?? null, porta);
 
+    // Âncora bruta do event loop (declarada aqui para o cleanup poder limpá-la
+    // mesmo que um erro de spawn aconteça ANTES da criação do timer).
+    let keepAlive = null;
     const pararTudo = (codigo) => {
+      if (keepAlive) clearInterval(keepAlive);
       if (child && child.pid) matarArvoreProcesso(child.pid);
       removerLock(home);
       process.exit(codigo);
@@ -728,12 +754,17 @@ function cmdStart(args) {
     console.log('');
     console.log(`ℹ Abra ${url} no navegador quando quiser — o LeadMaster nunca abre janelas sozinho.`);
     console.log('ℹ Logs do servidor em tempo real abaixo. Para encerrar: Ctrl+C.');
+    console.log(`  (espelho completo em ${logPath})`);
 
-    // Foreground: a interface readline mantém o processo Node vivo no terminal
-    // (sem setInterval/stdin.resume/dummy server) e captura o Ctrl+C de forma
-    // limpa. O worker (grupo isolado) não recebe o Ctrl+C direto — quem o
-    // encerra é o handler abaixo. SIGTERM/SIGBREAK seguem como paradas
-    // legítimas por código.
+    // Âncoras do terminal (duas, independentes — regra inquebrável do launcher):
+    // (a) handle referencial do filho Python (vive enquanto o servidor vive);
+    // (b) setInterval NÃO-unref'd — âncora bruta de event loop que sobrevive a
+    //     stdin fechado/EOF e a qualquer surpresa de PTY sob o npx.cmd.
+    // Juntas elas garantem que o prompt só volte por ação do usuário (Ctrl+C,
+    // SIGTERM/SIGBREAK) ou quando o servidor cair (aí o motivo é impresso).
+    keepAlive = setInterval(() => {}, 1000);
+
+    // Foreground: a interface readline captura o Ctrl+C de forma limpa.
     // Referência guardada no escopo de módulo (readlineUi): o GC do Node não
     // pode coletar a interface enquanto o terminal precisa ficar preso.
     readlineUi = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -743,8 +774,7 @@ function cmdStart(args) {
     });
     readlineUi.on('close', () => {
       // stdin chegou ao fim (EOF — ex.: wrapper do npx fechando a entrada):
-      // NÃO é hora de morrer. Quem segura o processo agora é o filho Python
-      // (referencial, sem unref); se ele cair, o listener 'exit' avisa.
+      // NÃO é hora de morrer — as âncoras acima seguram o processo.
       console.log('ℹ Entrada do terminal fechada (EOF) — o servidor continua no ar; encerre com kill ou Ctrl+C.');
     });
     process.on('SIGTERM', () => pararTudo(0));

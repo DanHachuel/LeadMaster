@@ -6,6 +6,41 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.45] — 2026-11-16
+
+### Corrigido
+
+- **Launcher — terminal encerrando sob o `npx.cmd` (diagnóstico silencioso):**
+  o `stdio: 'inherit'` ENGULIA a saída do uvicorn quando o wrapper do npx
+  derivava a PTY — sintoma: banner inicial aparecia, os logs do Uvicorn não
+  apareciam e o prompt voltava na hora, sem nenhuma pista do motivo. Mudanças
+  no `scripts/cli.mjs`:
+  - **Pipe manual + encaminhamento:** o Python sobe com
+    `stdio: ['ignore', 'pipe', 'pipe']` e o launcher reimprime **cada byte** de
+    stdout/stderr com prefixo `[api]`, espelhando tudo em
+    `<home>/storage/logs/backend.log` — um crash do Python (import quebrado,
+    RuntimeError, porta tomada) agora mostra o **traceback completo** e o
+    código de saída;
+  - **Terminal preso por DUAS âncoras:** o handle referencial do filho **e** um
+    `setInterval` **NÃO-unref'd** criado após o health OK (limpado no cleanup) —
+    âncora bruta de event loop que sobrevive a stdin fechado/EOF sob o npx.cmd;
+  - `readline` mantido em escopo de módulo (`readlineUi`) para o Ctrl+C limpo;
+  - `detached: true` **mantido** (o Ctrl+C do terminal não derruba o worker
+    direto — quem encerra é o handler, com `taskkill /T /F`).
+- **Gates atualizados** (`test_launcher_protections.py`): exigem o pipe +
+  encaminhamento manual, a âncora `setInterval` secundária e o espelho em
+  `backend.log`; `detached: true`/`windowsHide: true`/`readline`/lock/`kill`
+  continuam obrigatórios; proibidos seguem proibidos.
+- **AGENTS.md + skill `windows-runtime-guard`** reescritos: `stdio: 'inherit'`
+  documentado como **falho sob npx.cmd**; pipe + forwarding manual + dupla
+  âncora agora são a regra.
+- **Validado ao vivo (Windows, stdin do wrapper fechado):**
+  1. start normal → preso 15s+, logs do Uvicorn com `[api]` visíveis, espelho
+     em `backend.log` criado;
+  2. `main.py` do runtime corrompido com `RuntimeError` → **traceback completo
+     impresso** + "Servidor local encerrou (código 1)" + exit 1;
+  3. `kill` → servidor encerrado, lock removido, zero órfãos.
+
 ## [0.1.44] — 2026-11-15
 
 ### Adicionado

@@ -189,23 +189,26 @@ terminal pelo `readline` — a saída acontece só pelo **Ctrl+C** (`SIGINT` do
 readline, que mata o worker por código) ou por `SIGTERM`/`SIGBREAK`. NÃO
 pode ser alterado de forma a remover estas seis regras:
 
-1. **Spawn com `stdio: 'inherit'`:** o worker Python DEVE nascer com
-   **`stdio: 'inherit'`** (logs do FastAPI em tempo real no terminal),
-   `detached: true` (grupo de processos próprio: o Ctrl+C do terminal NÃO o
-   derruba direto) e `windowsHide: true` (nunca janela de console). É
-   **PROIBIDO** `pipe` no stdio do servidor (pipes no terminal são o canal
-   que derrubava tudo quando a PTY do MobaXterm morria) e é proibido
+1. **Spawn com pipe + encaminhamento manual:** o worker Python DEVE nascer com
+   **`stdio: ['ignore', 'pipe', 'pipe']`** e o launcher DEVE encaminhar
+   manualmente stdout/stderr do filho (prefixo `[api]` + espelho em
+   `<home>/storage/logs/backend.log`). Sob o `npx.cmd` o `stdio: 'inherit'`
+   ENGOLIA a saída do uvicorn no teardown da PTY (sintoma: banner aparece,
+   logs não aparecem, prompt volta) — com pipe + forwarding, um crash do
+   Python mostra o traceback completo e o código de saída. O worker nasce com
+   `detached: true` (grupo próprio: o Ctrl+C do terminal NÃO o derruba direto)
+   e `windowsHide: true`. São **PROIBIDOS**: `detached: false` e
    `child.unref()` (modelo descartável).
-2. **Terminal preso via `readline`:** o launcher DEVE criar
-   `readline.createInterface({ input: process.stdin, output: process.stdout })`
-   após a mensagem de sucesso — a interface ativa de stdin prende o processo
-   no terminal (foreground). São **proibidos** no código do launcher:
-   `process.stdin.resume()`, `setInterval` de keep-alive,
-   `http.createServer` (dummy server), `beforeExit` e
-   `await new Promise(...)` (todos falharam no MobaXterm). O handler
-   `rl.on('SIGINT', ...)` captura o Ctrl+C de forma limpa: mata o worker por
-   código (`matarArvoreProcesso`), remove o lock e sai. `SIGTERM`/`SIGBREAK`
-   são paradas legítimas pelo mesmo caminho. Nenhum `process.exit(0)` no
+2. **Terminal preso por DUAS âncoras:** (a) o handle referencial do filho
+   Python (vive enquanto o servidor vive) e (b) um `setInterval`
+   **NÃO-unref'd** criado após o health OK e limpo no cleanup — âncora bruta
+   de event loop que sobrevive a stdin fechado/EOF sob o npx.cmd. O
+   `readline.createInterface` (variável de escopo de módulo `readlineUi`)
+   captura o Ctrl+C de forma limpa: mata o worker por código
+   (`matarArvoreProcesso`), remove o lock e sai. `SIGTERM`/`SIGBREAK` são
+   paradas legítimas pelo mesmo caminho. São **proibidos** no código do
+   launcher: `process.stdin.resume()`, `http.createServer` (dummy server),
+   `beforeExit` e `await new Promise(...)`. Nenhum `process.exit(0)` no
    caminho de sucesso.
 3. **Lock file global:** o start DEVE gravar `<home>/leadmaster.pid`
    (`{pid, porta, versao, iniciado_em}`) e o `kill` DEVE lê-lo. Lock ausente
@@ -232,10 +235,11 @@ pode ser alterado de forma a remover estas seis regras:
    criado e removem o lock).
 
 Gate de regressão: `backend/tests/test_launcher_protections.py` falha se o
-`stdio: 'inherit'`, o `readline.createInterface`, o handler `SIGINT`, o lock
-file ou o comando `kill` desaparecerem — e falha se qualquer keep-alive
-proibido (`stdin.resume`, `setInterval`, `http.createServer`,
-`await new Promise`) ou o `child.unref()` do modelo descartável voltar.
+`stdio: ['ignore', 'pipe', 'pipe']` + encaminhamento manual, a âncora
+`setInterval`, o `readline.createInterface`, o handler `SIGINT`, o lock file
+ou o comando `kill` desaparecerem — e falha se qualquer proibido voltar
+(`stdin.resume`, dummy server, `beforeExit`, `await new Promise`,
+`child.unref()`).
 
 ### Runtime permanente — terminantemente proibido executar do cache do npx
 
