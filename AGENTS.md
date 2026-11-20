@@ -199,17 +199,18 @@ pode ser alterado de forma a remover estas seis regras:
    `detached: true` (grupo próprio: o Ctrl+C do terminal NÃO o derruba direto)
    e `windowsHide: true`. São **PROIBIDOS**: `detached: false` e
    `child.unref()` (modelo descartável).
-2. **Terminal preso por DUAS âncoras:** (a) o handle referencial do filho
-   Python (vive enquanto o servidor vive) e (b) um `setInterval`
-   **NÃO-unref'd** criado após o health OK e limpo no cleanup — âncora bruta
-   de event loop que sobrevive a stdin fechado/EOF sob o npx.cmd. O
-   `readline.createInterface` (variável de escopo de módulo `readlineUi`)
-   captura o Ctrl+C de forma limpa: mata o worker por código
-   (`matarArvoreProcesso`), remove o lock e sai. `SIGTERM`/`SIGBREAK` são
-   paradas legítimas pelo mesmo caminho. São **proibidos** no código do
-   launcher: `process.stdin.resume()`, `http.createServer` (dummy server),
-   `beforeExit` e `await new Promise(...)`. Nenhum `process.exit(0)` no
-   caminho de sucesso.
+2. **Terminal preso por BLOQUEIO TOTAL:** a única forma comprovada sob o
+   `npx.cmd` no Windows é **Dummy HTTP Server + fluxo congelado** —
+   `http.createServer(...).listen(0, '127.0.0.1')` (socket do SO: handle que
+   nunca deixa o event loop esvaziar) seguido de `await new Promise(() => {})`
+   (congela o fluxo principal para sempre). **Exit Trace obrigatório:**
+   `process.on('exit', (code) => ...)` no topo, imprimindo o stack trace e o
+   código do encerramento (com aviso explícito quando `code === 0`). Ctrl+C via
+   `process.on('SIGINT')`: cleanup fecha o dummy server, mata o worker por
+   código (`matarArvoreProcesso`) e remove o lock. `SIGTERM`/`SIGBREAK` são
+   paradas legítimas pelo mesmo caminho. São **PROIBIDOS**: `readline`,
+   `setInterval` (âncoras fracas sob o npx.cmd), `process.stdin.resume()` e
+   `beforeExit`. Nenhum `process.exit(0)` no caminho de sucesso.
 3. **Lock file global:** o start DEVE gravar `<home>/leadmaster.pid`
    (`{pid, porta, versao, iniciado_em}`) e o `kill` DEVE lê-lo. Lock ausente
    ou corrompido nunca impede o arranque (best-effort).
@@ -235,11 +236,10 @@ pode ser alterado de forma a remover estas seis regras:
    criado e removem o lock).
 
 Gate de regressão: `backend/tests/test_launcher_protections.py` falha se o
-`stdio: ['ignore', 'pipe', 'pipe']` + encaminhamento manual, a âncora
-`setInterval`, o `readline.createInterface`, o handler `SIGINT`, o lock file
+`stdio: ['ignore', 'pipe', 'pipe']` + encaminhamento manual, o Dummy HTTP
+Server, o `await new Promise`, o Exit Trace, o handler `SIGINT`, o lock file
 ou o comando `kill` desaparecerem — e falha se qualquer proibido voltar
-(`stdin.resume`, dummy server, `beforeExit`, `await new Promise`,
-`child.unref()`).
+(`readline`, `setInterval`, `stdin.resume`, `beforeExit`, `child.unref()`).
 
 ### Runtime permanente — terminantemente proibido executar do cache do npx
 

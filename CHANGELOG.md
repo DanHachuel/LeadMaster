@@ -6,6 +6,42 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.46] — 2026-11-20
+
+### Corrigido
+
+- **Launcher — Bloqueio Total + Exit Trace (o npx.cmd destruía o TTY e o loop
+  esvaziava):** mesmo com pipe manual e âncoras anteriores, o Node encerrava
+  logo após os logs do Uvicorn sob o `npx.cmd` no Windows. Mudanças no
+  `scripts/cli.mjs`:
+  - **BLOQUEIO TOTAL:** após o health OK, um **Dummy HTTP Server**
+    (`http.createServer(...).listen(0, '127.0.0.1')`) segura o event loop via
+    socket do SO — handle que sobrevive à destruição do TTY/stdin pelo wrapper
+    do npx — e o fluxo principal é congelado com
+    `await new Promise(() => {})`. **`readline` e `setInterval` removidos**
+    (âncoras fracas sob o npx.cmd);
+  - **Exit Trace obrigatório:** `process.on('exit', (code) => ...)` no topo
+    imprime `🛑 O LAUNCHER ESTÁ ENCERRANDO COM CÓDIGO ${code}` + stack trace do
+    encerramento + aviso explícito quando `code === 0` ("event loop esvaziou ou
+    process.exit(0) foi chamado indevidamente") — encerramento misterioso agora
+    tem diagnóstico exato no terminal;
+  - Ctrl+C via `process.on('SIGINT')` (não readline): cleanup fecha o dummy
+    server, mata a árvore do worker (`taskkill /T /F`) e remove o lock;
+    `SIGTERM`/`SIGBREAK` seguem como paradas legítimas;
+  - **mantido:** pipe manual + encaminhamento `[api]` + espelho em
+    `backend.log`, `detached: true`, `windowsHide: true`, lock file, comando
+    `kill` e kill switch.
+- **Gates atualizados** (`test_launcher_protections.py`): exigem o Dummy HTTP
+  Server, o `await new Promise`, o Exit Trace e o `process.on('SIGINT')`;
+  **proíbem** `readline`, `setInterval`, `stdin.resume`, `beforeExit` e
+  `child.unref()`. Suíte: **151 passed**.
+- **AGENTS.md + skill `windows-runtime-guard`** reescritos: Dummy HTTP Server +
+  fluxo congelado + Exit Trace documentados como **a única forma comprovada**
+  de segurar o Node sob o npx.cmd.
+- **Validado ao vivo (Windows, wrapper com stdin fechado):** start preso
+  **25s+** após o health com os logs do Uvicorn visíveis (`[api]`), sem
+  encerramento espontâneo e sem órfãos no encerramento forçado.
+
 ## [0.1.45] — 2026-11-16
 
 ### Corrigido

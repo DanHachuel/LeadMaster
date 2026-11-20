@@ -53,49 +53,48 @@ class TestLauncherProtections:
         assert "child.stderr.on('data'" in corpo
         assert "backend.log" in corpo
 
-    def test_terminal_preso_por_readline(self):
+    def test_bloqueio_total_dummy_server(self):
+        # Regra 0.1.46 (pedido do usuário): a ÚNICA forma comprovada de segurar
+        # o Node sob o npx.cmd é um servidor HTTP escutando (socket do SO) +
+        # fluxo principal congelado. PROIBIDOS readline e setInterval.
         c = _conteudo()
+        codigo = _codigo_sem_comentarios()
         corpo = _corpo_cmd_start()
-        assert "import readline from 'node:readline'" in c
-        assert "readline.createInterface" in corpo
-        # A interface vive em escopo de MÓDULO (referência viva — sem GC).
-        assert "let readlineUi" in c
-        assert "readlineUi = readline.createInterface" in corpo
-        assert "readlineUi.on('SIGINT'" in corpo  # Ctrl+C limpo
-        # O handler de Ctrl+C mata o worker e remove o lock (nunca órfã).
-        inicio = corpo.index("readlineUi.on('SIGINT'")
-        fim = corpo.index("});", inicio)
+        assert "readline" not in codigo, "readline voltou (proibido)"
+        assert "setInterval" not in codigo, "setInterval voltou (proibido)"
+        assert "http.createServer" in corpo
+        assert "dummyServer.listen(0, '127.0.0.1')" in corpo
+        assert "await new Promise(() => {})" in corpo
+        # Ctrl+C por processo (não readline) com cleanup completo.
+        assert "process.on('SIGINT'" in corpo
+        inicio = corpo.index("process.on('SIGINT'")
+        fim = corpo.index("})", inicio)
         handler = corpo[inicio:fim]
         assert "pararTudo(" in handler or "matarArvoreProcesso" in handler
 
     def test_nao_ha_exit_no_caminho_de_sucesso(self):
-        # Após a mensagem de sucesso, o launcher NÃO chama process.exit —
-        # quem segura é o readline; a saída acontece só pelo Ctrl+C/SIGTERM/
-        # SIGBREAK (ou por erros acionáveis, que ficam ANTES desta marca).
+        # Após a mensagem de sucesso, o launcher NÃO chama process.exit nem
+        # retorna — quem segura é o dummy server + o fluxo congelado; a saída
+        # acontece só pelo SIGINT/SIGTERM/SIGBREAK (ou erros acionáveis, que
+        # ficam ANTES desta marca).
         corpo = _corpo_cmd_start()
         assert "LeadMaster no ar em" in corpo
-        trecho = corpo[corpo.index("LeadMaster no ar em") : corpo.index("readline.createInterface")]
+        assert "await new Promise(() => {})" in corpo
+        trecho = corpo[corpo.index("LeadMaster no ar em") : corpo.index("await new Promise")]
         assert "process.exit(" not in trecho
 
     # ------------------------------------------------------------------
     # Fim dos modelos anteriores: keep-alives e unref são PROIBIDOS
     # ------------------------------------------------------------------
 
-    def test_ancora_secundaria_setinterval(self):
-        # Regra 0.1.45 (pedido do usuário): âncora bruta de event loop —
-        # setInterval NÃO-unref'd, criado só depois do health OK e limpado no
-        # cleanup. É a SEGUNDA âncora (a primeira é o handle do filho).
-        codigo = _codigo_sem_comentarios()
-        assert "keepAlive = setInterval(() => {}, 1000)" in codigo
-        assert "clearInterval(keepAlive)" in codigo
-        # Proibidos seguem proibidos.
-        for proibido in (
-            "process.stdin.resume",
-            "http.createServer",  # dummy server
-            "await new Promise",  # congelamento do fluxo
-            "beforeExit",
-        ):
-            assert proibido not in codigo, f"keep-alive proibido voltou: {proibido}"
+    def test_exit_trace_obrigatorio(self):
+        # Regra 0.1.46: todo encerramento do launcher imprime o stack trace e
+        # o código — exit 0 inesperado ganha aviso explícito de loop esvaziado.
+        c = _conteudo()
+        assert "process.on('exit'" in c
+        assert "O LAUNCHER ESTÁ ENCERRANDO COM CÓDIGO" in c
+        assert "Stack trace do encerramento:" in c
+        assert "event loop esvaziou" in c
 
     def test_proibido_unref_descartavel(self):
         codigo = _codigo_sem_comentarios()
@@ -165,8 +164,10 @@ class TestLauncherProtections:
         assert "process.on('uncaughtException'" in c
         assert "process.exit(1)" in c
 
-    def test_eof_do_stdin_nao_derruba_o_launcher(self):
-        corpo = _corpo_cmd_start()
-        # EOF na entrada (wrapper do npx) NÃO pode matar o launcher.
-        assert "readlineUi.on('close'" in corpo
-        assert "EOF" in corpo
+    def test_proibidos_do_modelo_antigo(self):
+        # Regra 0.1.46: sob o npx.cmd, readline e setInterval não seguram o
+        # Node; dummy server + promise congelada são a regra.
+        codigo = _codigo_sem_comentarios()
+        for proibido in ("process.stdin.resume", "beforeExit"):
+            assert proibido not in codigo, f"proibido voltou: {proibido}"
+        assert "child.unref" not in codigo  # modelo descartável saiu

@@ -17,14 +17,25 @@ Windows **e** Linux. As regras abaixo são **invioláveis** e estão no AGENTS.m
   saída, nunca silêncio.
 - O worker nasce com **`detached: true`** (grupo de processos próprio — imune a
   Ctrl+C do terminal) + **`windowsHide: true`**. NUNCA `detached: false`.
-- **Terminal preso por DUAS âncoras independentes:** (a) o handle referencial do
-  filho (vive enquanto o servidor vive) e (b) um `setInterval` **NÃO-unref'd**
-  criado após o health OK e limpo no cleanup — âncora bruta de event loop que
-  sobrevive a stdin fechado/EOF sob o npx.cmd.
-- Terminal preso também via **`readline.createInterface`** guardado em **variável
-  de escopo de módulo** (`readlineUi`, referência viva — o GC do Node não pode
-  coletá-la); Ctrl+C é tratado pelo handler `SIGINT` (mata a árvore do worker).
-  `SIGTERM`/`SIGBREAK` são paradas legítimas.
+- **Terminal preso: a ÚNICA forma comprovada sob o `npx.cmd` no Windows** é
+  **Dummy HTTP Server + fluxo principal congelado**:
+  ```javascript
+  const dummyServer = http.createServer((req, res) => res.end('keep-alive'));
+  dummyServer.listen(0, '127.0.0.1');   // socket do SO: handle que NUNCA esvazia o loop
+  // ...
+  await new Promise(() => {});          // congela o fluxo principal para sempre
+  ```
+  Um socket escutando é um handle referencial do SO — sobrevive à destruição do
+  TTY/stdin pelo wrapper do npx. **PROIBIDOS:** `readline` e `setInterval`
+  (ambos já falharam em produção sob o npx.cmd).
+- **Exit Trace obrigatório:** `process.on('exit', (code) => {...})` no topo do
+  launcher, imprimindo o stack trace do encerramento e o código — com aviso
+  explícito quando `code === 0` ("event loop esvaziou ou process.exit(0)
+  chamado indevidamente"). Sem isso, um encerramento misterioso fica sem
+  diagnóstico.
+- Ctrl+C via `process.on('SIGINT')` (não readline): cleanup fecha o dummy
+  server, mata a árvore do worker e remove o lock. `SIGTERM`/`SIGBREAK` são
+  paradas legítimas.
 - **Falha NUNCA é silenciosa (obrigatório):**
   - **`child.on('error')`** no spawn — sem listener, erro de spawn virava exceção
     silenciosa e o launcher morria sem explicação (regressão da 0.1.41);
@@ -35,9 +46,8 @@ Windows **e** Linux. As regras abaixo são **invioláveis** e estão no AGENTS.m
   - `readlineUi.on('close')` trata **EOF do stdin** (wrapper do npx fechando a
     entrada): o launcher NÃO morre — quem segura o processo é o filho Python
     referencial (sem `unref`).
-- **Proibidos:** `stdin.resume()`, `http.createServer` (dummy server),
-  `beforeExit`, `await new Promise(...)`, `child.unref()`, `detached: false`.
-  (`setInterval` agora é PERMITIDO como âncora secundária — ver acima.)
+- **Proibidos:** `readline`, `setInterval` (âncoras fracas sob o npx.cmd),
+  `stdin.resume()`, `beforeExit`, `child.unref()`, `detached: false`.
 - Existe o gate de regressão `backend/tests/test_launcher_protections.py` que falha se
   qualquer uma dessas regras desaparecer ou se um proibido voltar.
 

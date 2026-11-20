@@ -28,7 +28,6 @@ import { homedir, platform } from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import readline from 'node:readline';
 import http from 'node:http';
 
 // ---------------------------------------------------------------------------
@@ -49,9 +48,16 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-// Interface readline mantida em escopo de módulo: referência viva impede a
-// coleção pelo GC enquanto o launcher segura o terminal (foreground).
-let readlineUi = null;
+// Exit Trace (regra inviolável): se o launcher encerrar, o terminal mostra
+// EXATAMENTE por que — stack do encerramento, código e o aviso de loop
+// esvaziado quando a saída foi com código 0 (nunca deveria ser).
+process.on('exit', (code) => {
+  console.error(`\n🛑 O LAUNCHER ESTÁ ENCERRANDO COM CÓDIGO ${code}.`);
+  console.error(new Error('Stack trace do encerramento:').stack);
+  if (code === 0) {
+    console.error('⚠️ O event loop esvaziou ou process.exit(0) foi chamado indevidamente.');
+  }
+});
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -731,11 +737,17 @@ function cmdStart(args) {
     // switch do próximo start).
     escreverLock(home, child.pid ?? null, porta);
 
-    // Âncora bruta do event loop (declarada aqui para o cleanup poder limpá-la
-    // mesmo que um erro de spawn aconteça ANTES da criação do timer).
-    let keepAlive = null;
+    // Âncora do event loop (declarada aqui para o cleanup poder fechá-la mesmo
+    // que um erro de spawn aconteça ANTES da criação do servidor fantasma).
+    let dummyServer = null;
     const pararTudo = (codigo) => {
-      if (keepAlive) clearInterval(keepAlive);
+      if (dummyServer) {
+        try {
+          dummyServer.close();
+        } catch {
+          /* já fechado */
+        }
+      }
       if (child && child.pid) matarArvoreProcesso(child.pid);
       removerLock(home);
       process.exit(codigo);
@@ -756,32 +768,29 @@ function cmdStart(args) {
     console.log('ℹ Logs do servidor em tempo real abaixo. Para encerrar: Ctrl+C.');
     console.log(`  (espelho completo em ${logPath})`);
 
-    // Âncoras do terminal (duas, independentes — regra inquebrável do launcher):
-    // (a) handle referencial do filho Python (vive enquanto o servidor vive);
-    // (b) setInterval NÃO-unref'd — âncora bruta de event loop que sobrevive a
-    //     stdin fechado/EOF e a qualquer surpresa de PTY sob o npx.cmd.
-    // Juntas elas garantem que o prompt só volte por ação do usuário (Ctrl+C,
-    // SIGTERM/SIGBREAK) ou quando o servidor cair (aí o motivo é impresso).
-    keepAlive = setInterval(() => {}, 1000);
+    // -------------------------------------------------------------------------
+    // BLOQUEIO TOTAL do terminal (regra inviolável do AGENTS.md).
+    // Única forma comprovada de segurar o Node sob o `npx.cmd` no Windows:
+    // (a) um SERVIDOR HTTP escutando em porta efêmera — socket aberto no SO é
+    //     um handle referencial que NUNCA deixa o event loop esvaziar (mesmo
+    //     com o TTL/stdin destruídos pelo wrapper);
+    // (b) `await new Promise(() => {})` — congela o fluxo principal para
+    //     sempre, então nenhum código posterior pode rodar por acidente.
+    // PROIBIDOS: readline e setInterval (falham sob o npx.cmd).
+    // -------------------------------------------------------------------------
+    dummyServer = http.createServer((req, res) => res.end('keep-alive'));
+    dummyServer.listen(0, '127.0.0.1');
 
-    // Foreground: a interface readline captura o Ctrl+C de forma limpa.
-    // Referência guardada no escopo de módulo (readlineUi): o GC do Node não
-    // pode coletar a interface enquanto o terminal precisa ficar preso.
-    readlineUi = readline.createInterface({ input: process.stdin, output: process.stdout });
-    readlineUi.on('SIGINT', () => {
-      console.log('\nEncerrando LeadMaster...');
-      pararTudo(0);
-    });
-    readlineUi.on('close', () => {
-      // stdin chegou ao fim (EOF — ex.: wrapper do npx fechando a entrada):
-      // NÃO é hora de morrer — as âncoras acima seguram o processo.
-      console.log('ℹ Entrada do terminal fechada (EOF) — o servidor continua no ar; encerre com kill ou Ctrl+C.');
-    });
+    process.on('SIGINT', () => pararTudo(0));
     process.on('SIGTERM', () => pararTudo(0));
     if (platform() === 'win32') {
       // SIGBREAK (Ctrl+Break): parada legítima também no Windows.
       process.on('SIGBREAK', () => pararTudo(0));
     }
+
+    // Congela o fluxo principal PARA SEMPRE — a saída só acontece pelo
+    // SIGINT/SIGTERM/SIGBREAK (com cleanup) ou pela morte do servidor.
+    await new Promise(() => {});
   })().catch((err) => {
     console.error('✗ Erro inesperado ao iniciar:', err && err.message ? err.message : err);
     process.exit(1);
