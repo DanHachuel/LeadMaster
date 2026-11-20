@@ -51,10 +51,17 @@ process.on('uncaughtException', (err) => {
 // Exit Trace (regra inviolável): se o launcher encerrar, o terminal mostra
 // EXATAMENTE por que — stack do encerramento, código e o aviso de loop
 // esvaziado quando a saída foi com código 0 (nunca deveria ser).
+// O aviso de loop esvaziado só vale para o `start`: comandos de uma tarefa só
+// (install/doctor/help/version) DEVEM encerrar com 0 naturalmente.
+const comandoAtual = (() => {
+  const cmd = process.argv.slice(2).find((a) => !a.startsWith('-'));
+  return cmd || 'start';
+})();
+
 process.on('exit', (code) => {
   console.error(`\n🛑 O LAUNCHER ESTÁ ENCERRANDO COM CÓDIGO ${code}.`);
   console.error(new Error('Stack trace do encerramento:').stack);
-  if (code === 0) {
+  if (code === 0 && comandoAtual === 'start') {
     console.error('⚠️ O event loop esvaziou ou process.exit(0) foi chamado indevidamente.');
   }
 });
@@ -134,6 +141,37 @@ function copiarParaRuntime(home) {
     cpSync(dist, path.join(runtime, 'frontend', 'dist'), { recursive: true });
   }
   return runtime;
+}
+
+/**
+ * Gera o `start.bat` nativo — BYPASS do npx.cmd no Windows.
+ *
+ * O wrapper do `npx.cmd` fecha a PTY e mata o Node à força ao final da tarefa
+ * (nenhum handler roda — por isso o Exit Trace nunca aparecia). Rodando o
+ * `cli.mjs` DIRETAMENTE pelo node, o terminal fica preso e o Ctrl+C funciona.
+ *
+ * Para o caminho ser estável (o cache do npx troca de hash a cada versão),
+ * o launcher é copiado para `<home>/.runtime/cli.mjs` — o install recopia a
+ * cada atualização. Best-effort: se falhar, o npx continua funcionando.
+ */
+function gerarStartBat(home) {
+  try {
+    const runtime = runtimeDir(home);
+    cpSync(path.join(PKG_ROOT, 'scripts', 'cli.mjs'), path.join(runtime, 'cli.mjs'));
+    const bat = [
+      '@echo off',
+      'title LeadMaster',
+      'cd /d "%~dp0"',
+      'node "%~dp0.runtime\\cli.mjs" start %*',
+      'pause',
+      '',
+    ].join('\r\n');
+    const caminho = path.join(home, 'start.bat');
+    writeFileSync(caminho, bat);
+    return caminho;
+  } catch {
+    return null; // best-effort — sem o .bat o npx segue funcionando
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -572,11 +610,23 @@ async function cmdInstall(args) {
   const runtime = copiarParaRuntime(home);
   console.log(`✓ Runtime permanente preparado: ${runtime}`);
 
+  // start.bat nativo (bypass do npx.cmd no Windows).
+  const startBat = gerarStartBat(home);
+
   console.log('');
-  console.log('Instalação concluída. Para usar (comando único):');
+  console.log('Instalação concluída.');
+  if (startBat) {
+    console.log('');
+    console.log('★ Para iniciar o LeadMaster de forma estável no Windows');
+    console.log('  (evitando o bug do npx que fecha o terminal), use o script');
+    console.log('  criado na sua pasta de dados:');
+    console.log(`  ${startBat}`);
+    console.log('  (duplo clique ou rode no terminal; o npx fica só para install/atualização)');
+  }
+  console.log('');
+  console.log('Alternativa via npx (comando único):');
   console.log('  npx --yes @danhachuel/leadmaster@latest');
   console.log(`  (equivalente fixado: npx --yes @danhachuel/leadmaster@${VERSION})`);
-  console.log('  (o mesmo comando, sem "install", também verifica e prepara tudo sozinho)');
 }
 
 function cmdStart(args) {
@@ -639,6 +689,15 @@ function cmdStart(args) {
     // pronto, reutiliza (sem recopiar nada).
     let runtime;
     try {
+      // Guarda: se o launcher está rodando DE DENTRO do próprio .runtime
+      // (via start.bat) e o sum runtime está corrompido, recriá-lo apagaria
+      // o próprio launcher em execução — exigimos o install.
+      const dentroDoRuntime = path.resolve(PKG_ROOT) === path.resolve(runtimeDir(home));
+      if (!runtimePronto(home) && dentroDoRuntime) {
+        console.error('✗ Runtime corrompido. Rode o comando install novamente:');
+        console.error(`  npx --yes @danhachuel/leadmaster@${VERSION} install`);
+        process.exit(1);
+      }
       runtime = runtimePronto(home) ? runtimeDir(home) : copiarParaRuntime(home);
     } catch (err) {
       // Falha ao copiar (permissão, disco, PATH)? Mensagem acionável — nunca
@@ -767,6 +826,11 @@ function cmdStart(args) {
     console.log(`ℹ Abra ${url} no navegador quando quiser — o LeadMaster nunca abre janelas sozinho.`);
     console.log('ℹ Logs do servidor em tempo real abaixo. Para encerrar: Ctrl+C.');
     console.log(`  (espelho completo em ${logPath})`);
+    // start.bat nativo: garante que exista (idempotente) e lembra o usuário.
+    const startBat = gerarStartBat(home);
+    if (startBat) {
+      console.log(`ℹ Início estável no Windows (bypass do npx): ${startBat}`);
+    }
 
     // -------------------------------------------------------------------------
     // BLOQUEIO TOTAL do terminal (regra inviolável do AGENTS.md).

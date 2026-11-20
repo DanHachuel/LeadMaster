@@ -5,6 +5,30 @@ foi o binômio responsável por semanas de dor no Thunderbolt — app morrendo s
 janelas de CMD piscando, EBUSY no npx) **e** garantir compatibilidade nativa em
 Windows **e** Linux. As regras abaixo são **invioláveis** e estão no AGENTS.md.
 
+## 0. npx.cmd tem bug conhecido no Windows — use o start.bat
+
+O `npx.cmd` no Windows fecha a PTY e mata o processo Node **à força**
+(SIGKILL/TerminateProcess) ao final da tarefa do wrapper — nenhum handler do
+Node roda (por isso um Exit Trace pode nem aparecer) e o terminal devolve o
+prompt imediatamente. O `stdio`, o `readline`, o `setInterval` e o dummy server
+NÃO resolvem: a morte vem de fora do processo.
+
+**Para execução estável no dia a dia, o usuário DEVE usar o `start.bat`**
+gerado pelo `install` em `<home>/start.bat`:
+
+```bat
+@echo off
+title LeadMaster
+cd /d "%~dp0"
+node "%~dp0.runtime\cli.mjs" start %*
+pause
+```
+
+O launcher é copiado pelo `install` para `<home>/.runtime/cli.mjs` (caminho
+estável — o cache do `_npx` troca de hash a cada versão) e o `.bat` o executa
+**direto pelo node**, sem o npx no meio. **O npx deve ser usado APENAS para
+`install` ou atualização de versão.**
+
 ## 1. Launcher (`scripts/cli.mjs`)
 
 - **`stdio: 'inherit'` FALHA sob o `npx.cmd` no Windows** (stdin/stdout empipados

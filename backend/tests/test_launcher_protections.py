@@ -164,6 +164,22 @@ class TestLauncherProtections:
         assert "process.on('uncaughtException'" in c
         assert "process.exit(1)" in c
 
+    def test_start_bat_bypass_do_npx(self):
+        # Regra 0.1.47 (pedido do usuário): o npx.cmd fecha a PTY e mata o Node
+        # à força (por isso o Exit Trace nunca aparecia). O install DEVE gerar
+        # um start.bat nativo que roda o launcher copiado para <home>/.runtime.
+        c = _conteudo()
+        assert "gerarStartBat(" in c
+        assert "async function cmdInstall(" in c
+        install = c[c.index("async function cmdInstall(") : c.index("function cmdStart(")]
+        assert "gerarStartBat(home)" in install
+        # O .bat roda o launcher DIRETO pelo node (sem npx no meio).
+        assert 'node "%~dp0.runtime' in c
+        assert "pause" in c
+        # Exit Trace não alarme em comandos de tarefa única (install/doctor).
+        assert "comandoAtual" in c
+        assert "comandoAtual === 'start'" in c
+
     def test_proibidos_do_modelo_antigo(self):
         # Regra 0.1.46: sob o npx.cmd, readline e setInterval não seguram o
         # Node; dummy server + promise congelada são a regra.

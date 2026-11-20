@@ -6,6 +6,40 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.47] — 2026-11-20
+
+### Corrigido
+
+- **Terminal: BYPASS do `npx.cmd` via `start.bat` nativo.** O Exit Trace
+  provou que o Node não morria por loop vazio nem por `process.exit` — era
+  morto **à força** (SIGKILL/TerminateProcess) pelo wrapper do `npx.cmd`, que
+  destrói a PTY ao final da tarefa. Nenhum handler rodava (por isso o trace nem
+  aparecia). Solução definitiva: rodar o launcher **sem o npx no meio**.
+  - **`install` gera `<home>/start.bat`** (`gerarStartBat`): o launcher é
+    copiado para `<home>/.runtime/cli.mjs` (caminho estável — o cache do `_npx`
+    troca de hash a cada versão) e o `.bat` o executa direto pelo `node`
+    (`cd /d "%~dp0"` + `node "%~dp0.runtime\cli.mjs" start %*` + `pause` —
+    o `pause` mantém a janela legível após o Ctrl+C);
+  - **mensagem de fim de install** aponta o `.bat` como início recomendado no
+    Windows;
+  - **guarda anti-auto-destruição:** se o launcher rodar de dentro do próprio
+    `.runtime` (via `.bat`) e o runtime estiver corrompido, ele exige o
+    `install` em vez de apagar a si mesmo;
+  - `cmdStart` também (re)gera o `.bat` de forma idempotente e lembra o caminho.
+- **Exit Trace refinado:** o aviso de "event loop esvaziado" só dispara no
+  comando `start` — `install`/`doctor`/`help`/`version` são de tarefa única e
+  DEVEM encerrar com código 0 naturalmente (era alarme falso).
+- **README.md:** Quick Start com o `start.bat` como início recomendado no
+  Windows e o aviso do bug do `npx.cmd`.
+- **Skill `windows-runtime-guard`:** nova seção 0 — *"npx.cmd tem bug conhecido
+  no Windows: use o start.bat"* — npx apenas para install/atualização.
+- **Gate novo** (`test_launcher_protections.py`): falha se `gerarStartBat`
+  desaparecer do install ou se o `.bat` deixar de chamar o node direto.
+  Suíte: **152 passed**.
+- **Validado ao vivo (Windows):** `install` gerou o `.bat`; rodando o `.bat` o
+  terminal ficou **PRESO 46s+** com todos os logs do Uvicorn (`[api]`) e o
+  servidor no ar em 5055 — sem encerramento espontâneo.
+
 ## [0.1.46] — 2026-11-20
 
 ### Corrigido

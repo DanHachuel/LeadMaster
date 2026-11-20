@@ -35,7 +35,8 @@ Para fixar uma versão específica, troque `@latest` por `@<versão>`
 | Ação | Comando |
 |---|---|
 | Preparar (deps Python + dados) | `npx @danhachuel/leadmaster install` |
-| **Iniciar** | `npx @danhachuel/leadmaster` (ou `... start`) |
+| **Iniciar (recomendado no Windows)** | **`<sua pasta>\start.bat`** |
+| Iniciar (alternativa) | `npx @danhachuel/leadmaster` (ou `... start`) |
 | **Encerrar** | `npx @danhachuel/leadmaster kill` (ou `... stop`) |
 | Diagnóstico | `npx @danhachuel/leadmaster doctor` |
 | Ajuda / versão | `npx @danhachuel/leadmaster help` / `... version` |
@@ -46,6 +47,14 @@ Para fixar uma versão específica, troque `@latest` por `@<versão>`
 - O terminal fica **preso** exibindo os logs em tempo real. **`Ctrl+C`**
   encerra. Se a janela do terminal for fechada, o servidor continua no ar —
   use `kill` para encerrar de qualquer lugar.
+
+> **⚠️ Windows — use o `start.bat`:** o `npx.cmd` tem um bug conhecido que fecha
+> o terminal (PTY) e encerra o processo à força. O comando `install` cria
+> automaticamente o script **`start.bat`** na sua pasta de dados
+> (`Documents\REPOSITORIO\LeadMaster\start.bat`) — ele roda o app direto pelo
+> Node, sem o npx no meio, e o terminal fica preso de verdade.
+> **Use o `npx` apenas para instalar/atualizar.**
+
 - Flags úteis: `--home=<caminho>` (pasta de dados), `--port=<numero>`,
   `--skip-python-deps` (CI). Variáveis: `LEADMASTER_HOME`, `LEADMASTER_PORT`.
 - Pasta de dados padrão: `Documents\REPOSITORIO\LeadMaster`. Tudo fica em
