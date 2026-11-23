@@ -181,45 +181,44 @@ indigo/purple apenas na ação principal.
   - saída sempre direcionada a pipes/logs (`stdio` controlado) — nunca janelas
     interativas.
 
-## 🚨 REGRA INVIOLÁVEL: ARQUITETURA DO LAUNCHER (terminal preso — foreground com readline)
+## 🚨 REGRA INVIOLÁVEL: ARQUITETURA DO LAUNCHER (descartável — padrão PandaNews)
 
-O launcher (`scripts/cli.mjs`) usa o modelo **foreground**: o servidor sobe com
-`stdio: 'inherit'` (logs em tempo real no terminal) e o launcher fica preso ao
-terminal pelo `readline` — a saída acontece só pelo **Ctrl+C** (`SIGINT` do
-readline, que mata o worker por código) ou por `SIGTERM`/`SIGBREAK`. NÃO
-pode ser alterado de forma a remover estas seis regras:
+O launcher (`scripts/cli.mjs`) é **DESCARTÁVEL**. Mais de 10 tentativas
+comprovaram que o terminal (PTY/cmd.exe/`npx.cmd`) SEMPRE mata o Node e, com
+ele, o Python. **É PROIBIDO tentar manter o terminal preso no Windows.** O
+launcher deve ser descartável (`child.unref()` + stdio em arquivo). O terminal
+**SEMPRE** devolverá o prompt, e isso é o comportamento esperado: o Python
+sobe em grupo próprio e sobrevive ao terminal até o comando `kill`. NÃO pode
+ser alterado de forma a remover estas seis regras:
 
-1. **Spawn com pipe + encaminhamento manual:** o worker Python DEVE nascer com
-   **`stdio: ['ignore', 'pipe', 'pipe']`** e o launcher DEVE encaminhar
-   manualmente stdout/stderr do filho (prefixo `[api]` + espelho em
-   `<home>/storage/logs/backend.log`). Sob o `npx.cmd` o `stdio: 'inherit'`
-   ENGOLIA a saída do uvicorn no teardown da PTY (sintoma: banner aparece,
-   logs não aparecem, prompt volta) — com pipe + forwarding, um crash do
-   Python mostra o traceback completo e o código de saída. O worker nasce com
-   `detached: true` (grupo próprio: o Ctrl+C do terminal NÃO o derruba direto)
-   e `windowsHide: true`. São **PROIBIDOS**: `detached: false` e
-   `child.unref()` (modelo descartável).
-2. **Terminal preso por BLOQUEIO TOTAL:** a única forma comprovada sob o
-   `npx.cmd` no Windows é **Dummy HTTP Server + fluxo congelado** —
-   `http.createServer(...).listen(0, '127.0.0.1')` (socket do SO: handle que
-   nunca deixa o event loop esvaziar) seguido de `await new Promise(() => {})`
-   (congela o fluxo principal para sempre). **Exit Trace obrigatório:**
-   `process.on('exit', (code) => ...)` no topo, imprimindo o stack trace e o
-   código do encerramento (com aviso explícito quando `code === 0`). Ctrl+C via
-   `process.on('SIGINT')`: cleanup fecha o dummy server, mata o worker por
-   código (`matarArvoreProcesso`) e remove o lock. `SIGTERM`/`SIGBREAK` são
-   paradas legítimas pelo mesmo caminho. São **PROIBIDOS**: `readline`,
-   `setInterval` (âncoras fracas sob o npx.cmd), `process.stdin.resume()` e
-   `beforeExit`. Nenhum `process.exit(0)` no caminho de sucesso.
+1. **Spawn totalmente desacoplado:** o worker Python DEVE nascer com
+   **`stdio: ['ignore', logFd, logFd]`** — stdout/stderr vão direto para
+   `<home>/storage/logs/backend.log` (nenhum `pipe`/`inherit` para o
+   terminal), `detached: true` (grupo de processos próprio: sobrevive ao pai
+   e ao fechamento da janela) e `windowsHide: true` (nunca janela de console).
+   Após o spawn, o launcher DEVE chamar **`fs.closeSync(logFd)`** e
+   **`child.unref()`** — o Node não espera pelo filho. São **PROIBIDOS**:
+   remover o `unref()`, `detached: false` e pipe/encaminhamento manual no
+   stdio do servidor.
+2. **Zero keep-alive (terminal livre):** são **PROIBIDOS** no código do
+   launcher `readline`, `setInterval`, `http.createServer` (dummy server),
+   `await new Promise(...)`, `process.stdin.resume()` e `beforeExit`. Após a
+   mensagem de sucesso, o launcher **encerra naturalmente** e o prompt volta.
+   Também é **PROIBIDO** amarrar a morte do Python à do Node (`child.on('exit')`
+   ou `process.on('exit')` que matem o servidor após o sucesso). Exceção
+   permitida: na janela de startup, um crash do uvicorn ainda avisa com o
+   motivo e o fim do `backend.log` antes de encerrar (nunca fingir sucesso), e
+   `SIGINT`/`SIGTERM`/`SIGBREAK` antes do sucesso fazem cleanup completo.
 3. **Lock file global:** o start DEVE gravar `<home>/leadmaster.pid`
    (`{pid, porta, versao, iniciado_em}`) e o `kill` DEVE lê-lo. Lock ausente
    ou corrompido nunca impede o arranque (best-effort).
-4. **Comando de encerramento explícito (`kill`/`stop`):** DEVE existir para o
-   caso de a janela do terminal ser fechada (o worker, em grupo isolado,
-   sobrevive) — mata a árvore do PID do lock (`taskkill /F /T /PID` no
-   Windows, `kill -9` no Unix), roda a rede de segurança por porta, remove o
-   lock e imprime "Servidor encerrado com sucesso". A mensagem final do
-   `start` e a UI ensinam o Ctrl+C; o Dashboard também mostra o `kill`.
+4. **Comando de encerramento explícito (`kill`/`stop`):** é a ÚNICA forma de
+   encerrar o servidor (o worker, em grupo isolado, sobrevive ao terminal) —
+   mata a árvore do PID do lock (`taskkill /F /T /PID` no Windows,
+   `kill -9` no Unix), roda a rede de segurança por porta, remove o lock e
+   imprime "Servidor encerrado com sucesso". A mensagem final do `start` e a
+   UI ensinam o **`kill`** — ensinar Ctrl+C como forma de encerramento é
+   **PROIBIDO** (o terminal volta ao prompt por design).
 5. **Isolamento e higiene:** o worker nasce em grupo próprio com
    `windowsHide: true`; o kill switch (iniciado no `install` e no `start`)
    encerra instâncias anteriores do LeadMaster — descoberta por
@@ -230,16 +229,16 @@ pode ser alterado de forma a remover estas seis regras:
    próxima porta livre). A mensagem "já está rodando" é PROIBIDA.
 6. **Guarda da consola:** `guardConsoleStream` NUNCA deve ser removida —
    ignora `EPIPE` no `'error'` dos streams e espelha a saída em
-   `storage/logs/launcher_console.log`. Durante a curtíssima vida do launcher,
-   `SIGINT`/`SIGHUP` espúrios do MobaXterm são absorvidos no Windows (apenas
-   log); `SIGTERM`/`SIGBREAK` encerram por código (matam o servidor recém-
-   criado e removem o lock).
+   `storage/logs/launcher_console.log`. O Exit Trace (`process.on('exit')`)
+   registra stack e código apenas em encerramentos inesperados: saída com
+   código 0 no `start` é o comportamento DESENHADO (não é alarme).
 
 Gate de regressão: `backend/tests/test_launcher_protections.py` falha se o
-`stdio: ['ignore', 'pipe', 'pipe']` + encaminhamento manual, o Dummy HTTP
-Server, o `await new Promise`, o Exit Trace, o handler `SIGINT`, o lock file
-ou o comando `kill` desaparecerem — e falha se qualquer proibido voltar
-(`readline`, `setInterval`, `stdin.resume`, `beforeExit`, `child.unref()`).
+`stdio: ['ignore', logFd, logFd]`, o `fs.closeSync(logFd)`, o
+`child.unref()`, o lock file, a mensagem de sucesso com o `kill` ou o comando
+`kill` desaparecerem — e falha se qualquer keep-alive proibido voltar
+(`readline`, `setInterval`, `http.createServer`, `await new Promise`,
+`stdin.resume`, `beforeExit`).
 
 ### Runtime permanente — terminantemente proibido executar do cache do npx
 

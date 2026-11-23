@@ -9,69 +9,69 @@ Windows **e** Linux. As regras abaixo são **invioláveis** e estão no AGENTS.m
 
 O `npx.cmd` no Windows fecha a PTY e mata o processo Node **à força**
 (SIGKILL/TerminateProcess) ao final da tarefa do wrapper — nenhum handler do
-Node roda (por isso um Exit Trace pode nem aparecer) e o terminal devolve o
-prompt imediatamente. O `stdio`, o `readline`, o `setInterval` e o dummy server
-NÃO resolvem: a morte vem de fora do processo.
+Node roda e o terminal devolve o prompt imediatamente. Foram mais de 10
+tentativas de conviver com isso (stdio, readline, setInterval, dummy server,
+promise congelada): **a morte vem de fora do processo e é inevitável.**
 
-**Para execução estável no dia a dia, o usuário DEVE usar o `start.bat`**
-gerado pelo `install` em `<home>/start.bat`:
+A solução definitiva (padrão PandaNews) é **não depender do Node vivo**: o
+launcher é **DESCARTÁVEL** — ele sobe o Python e sai; o prompt voltar é o
+comportamento esperado. Para execução estável no dia a dia, o usuário DEVE usar
+o `start.bat` gerado pelo `install` em `<home>/start.bat`:
 
 ```bat
 @echo off
 title LeadMaster
 cd /d "%~dp0"
 node "%~dp0.runtime\cli.mjs" start %*
-pause
+exit
 ```
+
+(O `exit` final fecha a janela preta do CMD sozinha — sem `pause` — porque o
+servidor fica no ar em background.)
 
 O launcher é copiado pelo `install` para `<home>/.runtime/cli.mjs` (caminho
 estável — o cache do `_npx` troca de hash a cada versão) e o `.bat` o executa
 **direto pelo node**, sem o npx no meio. **O npx deve ser usado APENAS para
 `install` ou atualização de versão.**
 
-## 1. Launcher (`scripts/cli.mjs`)
+## 1. Launcher (`scripts/cli.mjs`) — descartável, padrão PandaNews
 
-- **`stdio: 'inherit'` FALHA sob o `npx.cmd` no Windows** (stdin/stdout empipados
-  pelo wrapper): a saída do uvicorn engolia no teardown da PTY e o sintoma era
-  "banner aparece, logs não aparecem, prompt volta". **Use sempre
-  `stdio: ['ignore', 'pipe', 'pipe']` + encaminhamento manual** — o launcher
-  captura cada byte de stdout/stderr do filho, reimprime com prefixo `[api]` e
-  espelha em `storage/logs/backend.log`. Assim um crash do Python (ImportError,
-  RuntimeError, porta tomada) mostra o **traceback completo** e o código de
-  saída, nunca silêncio.
-- O worker nasce com **`detached: true`** (grupo de processos próprio — imune a
-  Ctrl+C do terminal) + **`windowsHide: true`**. NUNCA `detached: false`.
-- **Terminal preso: a ÚNICA forma comprovada sob o `npx.cmd` no Windows** é
-  **Dummy HTTP Server + fluxo principal congelado**:
-  ```javascript
-  const dummyServer = http.createServer((req, res) => res.end('keep-alive'));
-  dummyServer.listen(0, '127.0.0.1');   // socket do SO: handle que NUNCA esvazia o loop
-  // ...
-  await new Promise(() => {});          // congela o fluxo principal para sempre
-  ```
-  Um socket escutando é um handle referencial do SO — sobrevive à destruição do
-  TTY/stdin pelo wrapper do npx. **PROIBIDOS:** `readline` e `setInterval`
-  (ambos já falharam em produção sob o npx.cmd).
-- **Exit Trace obrigatório:** `process.on('exit', (code) => {...})` no topo do
-  launcher, imprimindo o stack trace do encerramento e o código — com aviso
-  explícito quando `code === 0` ("event loop esvaziou ou process.exit(0)
-  chamado indevidamente"). Sem isso, um encerramento misterioso fica sem
-  diagnóstico.
-- Ctrl+C via `process.on('SIGINT')` (não readline): cleanup fecha o dummy
-  server, mata a árvore do worker e remove o lock. `SIGTERM`/`SIGBREAK` são
-  paradas legítimas.
-- **Falha NUNCA é silenciosa (obrigatório):**
-  - **`child.on('error')`** no spawn — sem listener, erro de spawn virava exceção
-    silenciosa e o launcher morria sem explicação (regressão da 0.1.41);
-  - **`child.on('exit')`** loga código/sinal do crash antes de liberar o terminal;
+**É PROIBIDO tentar manter o terminal preso no Windows.** O launcher deve ser
+descartável (`child.unref()` + stdio em arquivo). O terminal SEMPRE devolverá
+o prompt, e isso é o comportamento esperado.
+
+- **Spawn desacoplado:** o worker Python nasce com
+  **`stdio: ['ignore', logFd, logFd]`** (stdout/stderr vão direto para
+  `<home>/storage/logs/backend.log` — nenhum pipe/inherit para o terminal),
+  `detached: true` (grupo de processos próprio: sobrevive ao pai e ao
+  fechamento da janela) e `windowsHide: true`. Após o spawn:
+  **`fs.closeSync(logFd)`** e **`child.unref()`** — o Node não espera pelo
+  filho.
+- **Zero keep-alive — PROIBIDOS no código:** `readline`, `setInterval`,
+  `http.createServer` (dummy server), `await new Promise(...)`,
+  `process.stdin.resume()`, `beforeExit`. Depois da mensagem de sucesso o
+  launcher encerra naturalmente.
+- **Nunca fingir sucesso (obrigatório):**
+  - **`child.on('error')`** no spawn — erro de subida do Python imprime
+    "ERRO CRÍTICO AO INICIAR O PYTHON" com comando tentado, diretório e a dica
+    do `doctor` + exit 1;
+  - **`child.on('exit')`** só age na janela de startup (`sucessoAnunciado`):
+    crash do uvicorn imprime o motivo e as últimas linhas do `backend.log`;
+  - **`waitForHealth`** confere `/api/health` antes do ✅ — servidor que não
+    sobe mostra o fim do log + exit 1 (lock removido);
   - **verificação do runtime antes do spawn** (`<runtime>/backend/main.py`) com a
     mensagem acionável *"Runtime corrompido. Rode o comando install novamente"*;
-  - `process.on('uncaughtException')` loga **e encerra com código 1**;
-  - `readlineUi.on('close')` trata **EOF do stdin** (wrapper do npx fechando a
-    entrada): o launcher NÃO morre — quem segura o processo é o filho Python
-    referencial (sem `unref`).
-- **Proibidos:** `readline`, `setInterval` (âncoras fracas sob o npx.cmd),
-  `stdin.resume()`, `beforeExit`, `child.unref()`, `detached: false`.
+  - `process.on('uncaughtException')` loga **e encerra com código 1**.
+- **Após o sucesso, a morte do Python NÃO está amarrada à do Node** — ele vive
+  até o `kill` (ou o kill switch do próximo start). Mensagem final do `start`:
+  background na porta X, caminho do log, "abra o navegador" e o comando
+  `npx --yes @danhachuel/leadmaster kill`. **Ensinar Ctrl+C é PROIBIDO.**
+- **Exit Trace:** `process.on('exit')` registra stack e código apenas em
+  encerramentos inesperados — saída com código 0 no `start` é o comportamento
+  DESENHADO (não é alarme).
+- **Proibidos:** `readline`, `setInterval`, `http.createServer`,
+  `await new Promise`, `stdin.resume()`, `beforeExit`, `detached: false` e
+  remover o `child.unref()`.
 - Existe o gate de regressão `backend/tests/test_launcher_protections.py` que falha se
   qualquer uma dessas regras desaparecer ou se um proibido voltar.
 

@@ -1,14 +1,21 @@
 """Gate de regressão da arquitetura do launcher (scripts/cli.mjs).
 
-Modelo vigente (0.1.42): TERMINAL PRESO (foreground). O servidor sobe com
-`stdio: 'inherit'` (logs do FastAPI em tempo real no terminal) e o launcher
-fica preso pelo `readline` em escopo de MÓDULO (referência viva — sem GC) —
-que também captura o Ctrl+C de forma limpa (mata o worker por código e
-remove o lock). Falhas NUNCA são silenciosas: `child.on('error')` e
-`child.on('exit')` logam o motivo, o runtime é verificado antes do spawn e
-EOF na entrada não derruba o processo. São PROIBIDOS os keep-alives do modelo
-anterior (setInterval, stdin.resume, dummy server, beforeExit,
-await new Promise) e o `child.unref()` do modelo descartável.
+Modelo vigente (0.1.48): LAUNCHER DESCARTÁVEL (padrão PandaNews). Mais de 10
+tentativas comprovaram que o terminal (PTY/cmd.exe/npx.cmd) SEMPRE mata o Node
+e, com ele, o Python — por isso o terminal preso foi abandonado. O `start`:
+  1. sobe o Python com `stdio: ['ignore', logFd, logFd]` (tudo em
+     storage/logs/backend.log), `detached: true` (grupo próprio) e
+     `windowsHide: true`;
+  2. dá `fs.closeSync(logFd)` e `child.unref()` — o Node NÃO espera pelo filho;
+  3. confirma o health (nunca finge sucesso: crash na subida avisa com o fim
+     do log e encerra com código);
+  4. grava o lock (`leadmaster.pid`), imprime o sucesso e ENCERRA — o prompt
+     volta e o Python segue no ar até o `kill`.
+
+São PROIBIDOS (falha do gate): readline, setInterval, dummy server
+(`http.createServer`), `await new Promise`, `process.stdin.resume`, `beforeExit`
+e qualquer amarração da morte do Python à do Node após o sucesso.
+Continuam valendo: lock file, comando kill, kill switch, guarda da consola.
 """
 
 import re
@@ -39,71 +46,103 @@ def _corpo_cmd_start() -> str:
 
 class TestLauncherProtections:
     # ------------------------------------------------------------------
-    # Espinha dorsal do modelo foreground
+    # Espinha dorsal do modelo descartável (PandaNews)
     # ------------------------------------------------------------------
 
-    def test_pipe_manual_com_encaminhamento(self):
-        # Regra 0.1.45: sob o npx.cmd o `inherit` engolia a saída do uvicorn
-        # quando a PTY morria. Agora o filho sobe com pipe e o launcher
-        # encaminha CADA byte manualmente (+ espelho em backend.log), então um
-        # crash do Python NUNCA fica invisível.
+    def test_spawn_desacoplado_stdio_em_arquivo(self):
+        # Regra 0.1.48 (pedido do usuário): NENHUM pipe/inherit para o
+        # terminal — stdout/stderr do Python vão direto para backend.log.
         corpo = _corpo_cmd_start()
-        assert "stdio: ['ignore', 'pipe', 'pipe']" in corpo
-        assert "child.stdout.on('data'" in corpo
-        assert "child.stderr.on('data'" in corpo
+        assert "fs.openSync(" in corpo
         assert "backend.log" in corpo
+        assert "stdio: ['ignore', logFd, logFd]" in corpo
+        assert "fs.closeSync(logFd)" in corpo
+        assert "logFd" in corpo
 
-    def test_bloqueio_total_dummy_server(self):
-        # Regra 0.1.46 (pedido do usuário): a ÚNICA forma comprovada de segurar
-        # o Node sob o npx.cmd é um servidor HTTP escutando (socket do SO) +
-        # fluxo principal congelado. PROIBIDOS readline e setInterval.
-        c = _conteudo()
+    def test_unref_obrigatorio_modelo_descartavel(self):
+        # Sem `child.unref()` o Node esperaria o filho e o terminal preso
+        # voltaria — o oposto exato do padrão PandaNews.
         codigo = _codigo_sem_comentarios()
+        assert "child.unref()" in codigo, "child.unref() desapareceu (obrigatório no modelo descartável)"
+
+    def test_worker_isolado(self):
         corpo = _corpo_cmd_start()
-        assert "readline" not in codigo, "readline voltou (proibido)"
-        assert "setInterval" not in codigo, "setInterval voltou (proibido)"
-        assert "http.createServer" in corpo
-        assert "dummyServer.listen(0, '127.0.0.1')" in corpo
-        assert "await new Promise(() => {})" in corpo
-        # Ctrl+C por processo (não readline) com cleanup completo.
-        assert "process.on('SIGINT'" in corpo
-        inicio = corpo.index("process.on('SIGINT'")
-        fim = corpo.index("})", inicio)
-        handler = corpo[inicio:fim]
-        assert "pararTudo(" in handler or "matarArvoreProcesso" in handler
+        assert "detached: true" in corpo  # grupo próprio: sobrevive ao terminal
+        assert "windowsHide: true" in corpo  # nunca janela de console
 
-    def test_nao_ha_exit_no_caminho_de_sucesso(self):
-        # Após a mensagem de sucesso, o launcher NÃO chama process.exit nem
-        # retorna — quem segura é o dummy server + o fluxo congelado; a saída
-        # acontece só pelo SIGINT/SIGTERM/SIGBREAK (ou erros acionáveis, que
-        # ficam ANTES desta marca).
+    def test_mensagem_de_sucesso_instrui_o_kill(self):
+        # A mensagem final ensina: background, caminho do log, navegador e
+        # encerramento pelo kill.
         corpo = _corpo_cmd_start()
-        assert "LeadMaster no ar em" in corpo
-        assert "await new Promise(() => {})" in corpo
-        trecho = corpo[corpo.index("LeadMaster no ar em") : corpo.index("await new Promise")]
-        assert "process.exit(" not in trecho
+        assert "LeadMaster rodando em background na porta" in corpo
+        assert "Os logs estão em:" in corpo
+        assert "backend.log" in corpo
+        assert "Abra o navegador" in corpo
+        assert "Para encerrar o servidor, rode: npx --yes @danhachuel/leadmaster kill" in corpo
 
-    # ------------------------------------------------------------------
-    # Fim dos modelos anteriores: keep-alives e unref são PROIBIDOS
-    # ------------------------------------------------------------------
+    def test_nenhum_keep_alive_no_start(self):
+        # Zero âncoras de terminal: após a mensagem de sucesso o launcher
+        # encerra naturalmente e o prompt volta (comportamento esperado).
+        codigo = _codigo_sem_comentarios()
+        for proibido in (
+            "readline",
+            "setInterval",
+            "http.createServer",
+            "await new Promise",
+            "process.stdin.resume",
+            "beforeExit",
+        ):
+            assert proibido not in codigo, f"keep-alive proibido voltou: {proibido}"
 
-    def test_exit_trace_obrigatorio(self):
-        # Regra 0.1.46: todo encerramento do launcher imprime o stack trace e
-        # o código — exit 0 inesperado ganha aviso explícito de loop esvaziado.
+    def test_morte_do_python_nao_amarrada_ao_node(self):
+        # Após o sucesso, a morte do Python NÃO encerra nada (o launcher já
+        # saiu). Durante a subida, o crash avisa com o fim do log.
+        corpo = _corpo_cmd_start()
+        assert "child.on('exit'" in corpo
+        assert "Servidor local encerrou" in corpo
+        assert "sucessoAnunciado" in corpo  # o handler só age ANTES do sucesso
+
+    def test_exit_trace_sem_alarme_no_sucesso(self):
+        # Saída com código 0 (inclusive no `start`, por design) não é alarme —
+        # o trace só acusa encerramentos inesperados (código ≠ 0).
         c = _conteudo()
         assert "process.on('exit'" in c
         assert "O LAUNCHER ESTÁ ENCERRANDO COM CÓDIGO" in c
         assert "Stack trace do encerramento:" in c
-        assert "event loop esvaziou" in c
-
-    def test_proibido_unref_descartavel(self):
         codigo = _codigo_sem_comentarios()
-        assert "child.unref" not in codigo  # modelo background/descartável saiu
+        assert "if (code === 0) return" in codigo
+        assert "event loop esvaziou" not in codigo  # alarme do modelo preso saiu
 
-    def test_worker_isolado(self):
+    # ------------------------------------------------------------------
+    # Nunca fingir sucesso (continua valendo)
+    # ------------------------------------------------------------------
+
+    def test_captura_de_erro_no_spawn(self):
         corpo = _corpo_cmd_start()
-        assert "detached: true" in corpo  # grupo próprio: Ctrl+C não o derruba
-        assert "windowsHide: true" in corpo  # nunca janela de console
+        # Sem listener, erro de spawn virava exceção silenciosa.
+        assert "child.on('error'" in corpo
+        assert "ERRO CRÍTICO AO INICIAR O PYTHON" in corpo
+        inicio = corpo.index("child.on('error'")
+        fim = corpo.index("});", inicio)
+        handler = corpo[inicio:fim]
+        assert "process.exit(1)" in handler
+
+    def test_health_confirmado_antes_do_sucesso(self):
+        corpo = _corpo_cmd_start()
+        assert "waitForHealth(" in corpo
+        assert "não respondeu" in corpo  # falha do health é acionável
+        assert "backend.log" in corpo    # falha aponta para o log
+
+    def test_runtime_verificado_antes_do_spawn(self):
+        corpo = _corpo_cmd_start()
+        assert "Runtime corrompido" in corpo  # mensagem acionável
+        assert "backend', 'main.py'" in corpo or "backend', \"main.py\"" in corpo
+
+    def test_handlers_globais_com_exit(self):
+        c = _conteudo()
+        # uncaughtException encerra com código (nunca silencioso).
+        assert "process.on('uncaughtException'" in c
+        assert "process.exit(1)" in c
 
     # ------------------------------------------------------------------
     # Lock file + comando kill + kill switch (continuam valendo)
@@ -137,53 +176,16 @@ class TestLauncherProtections:
         assert "netstat" in c or "lsof" in c
         assert "já está rodando" not in c
 
-    def test_captura_de_erro_no_spawn(self):
-        corpo = _corpo_cmd_start()
-        # Sem listener, erro de spawn virava exceção silenciosa.
-        assert "child.on('error'" in corpo
-        assert "ERRO CRÍTICO AO INICIAR O PYTHON" in corpo
-        inicio = corpo.index("child.on('error'")
-        fim = corpo.index("});", inicio)
-        handler = corpo[inicio:fim]
-        assert "process.exit(1)" in handler
-
-    def test_morte_do_servidor_nao_e_silenciosa(self):
-        corpo = _corpo_cmd_start()
-        # Crash do uvicorn DEVE avisar no terminal antes de liberar o prompt.
-        assert "child.on('exit'" in corpo
-        assert "Servidor local encerrou" in corpo
-
-    def test_runtime_verificado_antes_do_spawn(self):
-        corpo = _corpo_cmd_start()
-        assert "Runtime corrompido" in corpo  # mensagem acionável
-        assert "backend', 'main.py'" in corpo or "backend', \"main.py\"" in corpo
-
-    def test_handlers_globais_com_exit(self):
+    def test_start_bat_descartavel(self):
+        # Regra 0.1.47/0.1.48: o install gera um start.bat que roda o launcher
+        # DIRETO pelo node (sem npx no meio) e dá `exit` — a janela preta fecha
+        # sozinha (sem `pause`), porque o servidor fica no ar em background.
         c = _conteudo()
-        # uncaughtException encerra com código (nunca silencioso).
-        assert "process.on('uncaughtException'" in c
-        assert "process.exit(1)" in c
-
-    def test_start_bat_bypass_do_npx(self):
-        # Regra 0.1.47 (pedido do usuário): o npx.cmd fecha a PTY e mata o Node
-        # à força (por isso o Exit Trace nunca aparecia). O install DEVE gerar
-        # um start.bat nativo que roda o launcher copiado para <home>/.runtime.
-        c = _conteudo()
+        codigo = _codigo_sem_comentarios()
         assert "gerarStartBat(" in c
         assert "async function cmdInstall(" in c
         install = c[c.index("async function cmdInstall(") : c.index("function cmdStart(")]
         assert "gerarStartBat(home)" in install
-        # O .bat roda o launcher DIRETO pelo node (sem npx no meio).
         assert 'node "%~dp0.runtime' in c
-        assert "pause" in c
-        # Exit Trace não alarme em comandos de tarefa única (install/doctor).
-        assert "comandoAtual" in c
-        assert "comandoAtual === 'start'" in c
-
-    def test_proibidos_do_modelo_antigo(self):
-        # Regra 0.1.46: sob o npx.cmd, readline e setInterval não seguram o
-        # Node; dummy server + promise congelada são a regra.
-        codigo = _codigo_sem_comentarios()
-        for proibido in ("process.stdin.resume", "beforeExit"):
-            assert proibido not in codigo, f"proibido voltou: {proibido}"
-        assert "child.unref" not in codigo  # modelo descartável saiu
+        assert "'exit'" in c
+        assert "pause" not in codigo  # a janela preta fecha sozinha (sem pause)

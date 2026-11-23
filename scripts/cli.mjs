@@ -5,8 +5,10 @@
  *
  * Comandos:
  *   install  Prepara a pasta de dados (home) e instala as dependências Python.
- *   start    Sobe o backend FastAPI (serving da UI construída) e imprime a URL
- *            no terminal — NUNCA abre o navegador; quem abre é o usuário.
+ *   start    Sobe o backend FastAPI (serving da UI construída) em BACKGROUND
+ *            (modelo descartável, padrão PandaNews): o terminal devolve o
+ *            prompt e o servidor segue no ar; encerrar só com `kill`.
+ *            NUNCA abre o navegador; quem abre é o usuário.
  *            `npx @danhachuel/leadmaster` sem argumentos executa este comando.
  *   doctor   Diagnóstico rápido: Node, Python, dependências, pasta de dados.
  *   help     Ajuda.
@@ -23,6 +25,7 @@
  */
 
 import { spawn, spawnSync, execSync } from 'node:child_process';
+import * as fs from 'node:fs';
 import { existsSync, mkdirSync, readFileSync, appendFileSync, rmSync, cpSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import net from 'node:net';
@@ -48,22 +51,16 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-// Exit Trace (regra inviolável): se o launcher encerrar, o terminal mostra
-// EXATAMENTE por que — stack do encerramento, código e o aviso de loop
-// esvaziado quando a saída foi com código 0 (nunca deveria ser).
-// O aviso de loop esvaziado só vale para o `start`: comandos de uma tarefa só
-// (install/doctor/help/version) DEVEM encerrar com 0 naturalmente.
-const comandoAtual = (() => {
-  const cmd = process.argv.slice(2).find((a) => !a.startsWith('-'));
-  return cmd || 'start';
-})();
-
+// Exit Trace (diagnóstico): encerramentos INESPERADOS (código ≠ 0) mostram
+// EXATAMENTE por que — stack do encerramento e código. Saída com código 0
+// NUNCA é alarme: no modelo DESCARTÁVEL (padrão PandaNews) o `start` encerra
+// com 0 por design (o prompt volta e o Python segue no ar), e os comandos de
+// tarefa única (install/doctor/help/version/kill) também encerram com 0
+// naturalmente.
 process.on('exit', (code) => {
+  if (code === 0) return; // saída normal — trace só para o inesperado
   console.error(`\n🛑 O LAUNCHER ESTÁ ENCERRANDO COM CÓDIGO ${code}.`);
   console.error(new Error('Stack trace do encerramento:').stack);
-  if (code === 0 && comandoAtual === 'start') {
-    console.error('⚠️ O event loop esvaziou ou process.exit(0) foi chamado indevidamente.');
-  }
 });
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -148,7 +145,10 @@ function copiarParaRuntime(home) {
  *
  * O wrapper do `npx.cmd` fecha a PTY e mata o Node à força ao final da tarefa
  * (nenhum handler roda — por isso o Exit Trace nunca aparecia). Rodando o
- * `cli.mjs` DIRETAMENTE pelo node, o terminal fica preso e o Ctrl+C funciona.
+ * `cli.mjs` DIRETAMENTE pelo node, o launcher descartável funciona limpo:
+ * sobe o Python, imprime o sucesso e encerra — o `.bat` simplesmente chama o
+ * `start` e dá `exit` no final (a janela preta do CMD fecha sozinha, sem
+ * `pause`: o servidor fica no ar em background).
  *
  * Para o caminho ser estável (o cache do npx troca de hash a cada versão),
  * o launcher é copiado para `<home>/.runtime/cli.mjs` — o install recopia a
@@ -163,7 +163,7 @@ function gerarStartBat(home) {
       'title LeadMaster',
       'cd /d "%~dp0"',
       'node "%~dp0.runtime\\cli.mjs" start %*',
-      'pause',
+      'exit',
       '',
     ].join('\r\n');
     const caminho = path.join(home, 'start.bat');
@@ -726,19 +726,20 @@ function cmdStart(args) {
     console.log(`→ Python: ${python.cmd} ${python.args.join(' ')} (cwd: ${path.join(runtime, 'backend')})`);
 
     // -------------------------------------------------------------------------
-    // Terminal PRESO (foreground — regra inviolável do AGENTS.md).
-    // O Python sobe com stdio em PIPE encaminhado manualmente: sob `npx.cmd`
-    // (stdin/stdout empipados pelo wrapper) o `inherit` podia engolir a saída
-    // quando a PTY morria — com pipe + forwarding, CADA byte do uvicorn passa
-    // pelo launcher (protegido contra EPIPE) e é espelhado em
-    // storage/logs/backend.log, então um crash do Python NUNCA fica invisível.
-    // O worker nasce em grupo próprio (detached: true): o Ctrl+C do terminal
-    // não o derruba direto; quem encerra é o handler de sinal, que mata a
-    // árvore por código e remove o lock. O terminal é seguro por DUAS âncoras
-    // independentes: o handle referencial do filho e um setInterval secundário.
+    // SPAWN TOTALMENTE DESACOPLADO (arquitetura descartável — padrão PandaNews).
+    // Mais de 10 tentativas comprovaram: o terminal (PTY/cmd.exe/npx.cmd)
+    // SEMPRE mata o Node e, com ele, o Python. Por isso o terminal preso foi
+    // ABANDONADO (regra inviolável do AGENTS.md): o Python sobe em grupo
+    // próprio (detached), com stdio em ARQUIVO (nenhum pipe/inherit para o
+    // terminal) e `child.unref()` — o Node não espera por ele. O launcher
+    // confirma que o servidor subiu (health), imprime o sucesso e encerra: o
+    // terminal devolve o prompt e o Python segue no ar até o comando `kill`.
     // -------------------------------------------------------------------------
-    const logPath = path.join(home, 'storage', 'logs', 'backend.log');
-    mkdirSync(path.dirname(logPath), { recursive: true });
+    const logDir = path.join(home, 'storage', 'logs');
+    mkdirSync(logDir, { recursive: true });
+    const logPath = path.join(logDir, 'backend.log');
+    const logFd = fs.openSync(logPath, 'a');
+
     const child = spawn(python.cmd, [...python.args, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(porta), '--no-access-log'], {
       cwd: path.join(runtime, 'backend'),
       env: {
@@ -749,27 +750,12 @@ function cmdStart(args) {
         PYTHONUTF8: '1',
         PYTHONIOENCODING: 'utf-8',
       },
-      stdio: ['ignore', 'pipe', 'pipe'], // capturamos e encaminhamos manualmente
-      detached: true,
-      windowsHide: true,
+      stdio: ['ignore', logFd, logFd], // NENHUM pipe para o terminal: tudo no arquivo
+      detached: true,                  // grupo próprio: sobrevive ao pai e ao terminal
+      windowsHide: true,               // nunca abre janela de console
     });
-
-    // Encaminhamento manual dos streams + espelho em arquivo (diagnóstico).
-    const encaminhar = (buf, tag) =>
-      buf
-        .toString('utf8')
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .forEach((linha) => {
-          console.log(`[${tag}] ${linha}`);
-          try {
-            appendFileSync(logPath, `[${tag}] ${linha}\n`);
-          } catch {
-            /* espelho de log é best-effort */
-          }
-        });
-    child.stdout.on('data', (d) => encaminhar(d, 'api'));
-    child.stderr.on('data', (d) => encaminhar(d, 'api'));
+    fs.closeSync(logFd);
+    child.unref(); // LIBERTA o filho — o Node não espera por ele (descartável)
 
     // Captura de falhas do spawn (regra inviolável): sem listener, um erro
     // de spawn virava exceção silenciosa e o launcher morria sem explicação.
@@ -782,12 +768,26 @@ function cmdStart(args) {
       process.exit(1);
     });
 
-    // Se o servidor morrer (crash, dependência, porta tomada), o terminal é
-    // liberado COM o código/motivo — nunca silenciosamente.
+    // Crash DURANTE a janela de startup (antes do sucesso): o terminal é
+    // liberado COM o motivo e o fim do backend.log — nunca fingimos sucesso.
+    // Após a mensagem de sucesso o launcher já encerrou: a morte do Python
+    // NÃO está amarrada à do Node — ele vive até o `kill` (ou o kill switch
+    // do próximo start).
+    let sucessoAnunciado = false;
+    const mostrarFimDoLog = () => {
+      try {
+        const linhas = readFileSync(logPath, 'utf8').trim().split(/\r?\n/).slice(-12);
+        if (linhas.length) console.error(`  Últimas linhas do backend.log:\n    ${linhas.join('\n    ')}`);
+      } catch {
+        /* log ausente — diagnóstico segue pelas mensagens acima */
+      }
+    };
     child.on('exit', (code, signal) => {
+      if (sucessoAnunciado) return;
       const motivo = signal ? `sinal ${signal}` : `código ${code}`;
-      console.error(`✗ Servidor local encerrou (${motivo}).`);
-      console.error('  Veja os logs acima; rode "npx @danhachuel/leadmaster doctor" para diagnóstico.');
+      console.error(`✗ Servidor local encerrou (${motivo}) antes de ficar pronto.`);
+      console.error(`  Veja o log: ${logPath}`);
+      mostrarFimDoLog();
       removerLock(home);
       process.exit(code === null || code === undefined ? 1 : code);
     });
@@ -796,55 +796,13 @@ function cmdStart(args) {
     // switch do próximo start).
     escreverLock(home, child.pid ?? null, porta);
 
-    // Âncora do event loop (declarada aqui para o cleanup poder fechá-la mesmo
-    // que um erro de spawn aconteça ANTES da criação do servidor fantasma).
-    let dummyServer = null;
+    // Interrupção durante a janela de startup (antes do sucesso): cleanup
+    // completo — não deixamos meio servidor no ar com lock antigo.
     const pararTudo = (codigo) => {
-      if (dummyServer) {
-        try {
-          dummyServer.close();
-        } catch {
-          /* já fechado */
-        }
-      }
       if (child && child.pid) matarArvoreProcesso(child.pid);
       removerLock(home);
       process.exit(codigo);
     };
-
-    console.log(`→ Subindo servidor local em ${url} ...`);
-    const health = await waitForHealth(porta, 120000);
-    if (!health) {
-      console.error(`✗ O servidor não respondeu em ${url} dentro do tempo limite.`);
-      console.error('  Veja os logs acima; rode "npx @danhachuel/leadmaster doctor" para diagnóstico.');
-      pararTudo(1);
-      return;
-    }
-
-    console.log(`✓ LeadMaster no ar em ${url} (dados: ${home})`);
-    console.log('');
-    console.log(`ℹ Abra ${url} no navegador quando quiser — o LeadMaster nunca abre janelas sozinho.`);
-    console.log('ℹ Logs do servidor em tempo real abaixo. Para encerrar: Ctrl+C.');
-    console.log(`  (espelho completo em ${logPath})`);
-    // start.bat nativo: garante que exista (idempotente) e lembra o usuário.
-    const startBat = gerarStartBat(home);
-    if (startBat) {
-      console.log(`ℹ Início estável no Windows (bypass do npx): ${startBat}`);
-    }
-
-    // -------------------------------------------------------------------------
-    // BLOQUEIO TOTAL do terminal (regra inviolável do AGENTS.md).
-    // Única forma comprovada de segurar o Node sob o `npx.cmd` no Windows:
-    // (a) um SERVIDOR HTTP escutando em porta efêmera — socket aberto no SO é
-    //     um handle referencial que NUNCA deixa o event loop esvaziar (mesmo
-    //     com o TTL/stdin destruídos pelo wrapper);
-    // (b) `await new Promise(() => {})` — congela o fluxo principal para
-    //     sempre, então nenhum código posterior pode rodar por acidente.
-    // PROIBIDOS: readline e setInterval (falham sob o npx.cmd).
-    // -------------------------------------------------------------------------
-    dummyServer = http.createServer((req, res) => res.end('keep-alive'));
-    dummyServer.listen(0, '127.0.0.1');
-
     process.on('SIGINT', () => pararTudo(0));
     process.on('SIGTERM', () => pararTudo(0));
     if (platform() === 'win32') {
@@ -852,9 +810,33 @@ function cmdStart(args) {
       process.on('SIGBREAK', () => pararTudo(0));
     }
 
-    // Congela o fluxo principal PARA SEMPRE — a saída só acontece pelo
-    // SIGINT/SIGTERM/SIGBREAK (com cleanup) ou pela morte do servidor.
-    await new Promise(() => {});
+    console.log(`→ Subindo servidor local em ${url} (modo background — padrão PandaNews)...`);
+    const health = await waitForHealth(porta, 120000);
+    if (!health) {
+      console.error(`✗ O servidor não respondeu em ${url} dentro do tempo limite.`);
+      console.error(`  Veja o log: ${logPath}`);
+      mostrarFimDoLog();
+      pararTudo(1);
+      return;
+    }
+    sucessoAnunciado = true;
+
+    console.log('');
+    console.log(`✅ LeadMaster rodando em background na porta ${porta}.`);
+    console.log(`   Os logs estão em: ${logPath}`);
+    console.log(`   Abra o navegador para usar: ${url}`);
+    console.log('   Para encerrar o servidor, rode: npx --yes @danhachuel/leadmaster kill');
+    console.log('');
+    console.log('ℹ O terminal volta ao prompt — o servidor continua rodando (sobrevive ao fechamento da janela).');
+    // start.bat nativo: garante que exista (idempotente) e lembra o usuário.
+    const startBat = gerarStartBat(home);
+    if (startBat) {
+      console.log(`ℹ Início estável no Windows (bypass do npx): ${startBat}`);
+    }
+    // Modelo descartável: NÃO existe keep-alive (readline/dummy server/
+    // setInterval/await new Promise são PROIBIDOS). O launcher encerra AQUI e
+    // o prompt volta — comportamento esperado. O Python segue no ar até o
+    // `kill` (ou o kill switch do próximo start).
   })().catch((err) => {
     console.error('✗ Erro inesperado ao iniciar:', err && err.message ? err.message : err);
     process.exit(1);
@@ -933,7 +915,7 @@ function cmdHelp() {
   console.log('');
   console.log('Comandos:');
   console.log('  install   Prepara a pasta de dados e instala dependências Python.');
-  console.log('  start     Sobe o servidor no terminal (padrão): logs em tempo real; Ctrl+C encerra.');
+  console.log('  start     Sobe o servidor em background (padrão): o terminal devolve o prompt; use kill para encerrar.');
   console.log('  kill      Encerra o servidor (alias: stop) — útil se o terminal foi fechado.');
   console.log('  doctor    Diagnóstico do ambiente.');
   console.log('  version   Mostra a versão.');

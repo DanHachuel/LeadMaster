@@ -6,6 +6,51 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 A etiqueta visual de versão usa patch de dois dígitos (ex.: `0.1.00`); o registry NPM
 normaliza para a forma canônica (ex.: `0.1.0`).
 
+## [0.1.48] — 2026-11-23
+
+### Alterado (refatoração crítica de arquitetura — solução definitiva)
+
+- **Launcher DESCARTÁVEL — padrão PandaNews (fim da novela do terminal):**
+  mais de 10 tentativas comprovaram que o terminal (PTY/cmd.exe/`npx.cmd`)
+  SEMPRE mata o Node e, com ele, o Python. O terminal preso foi
+  **abandonado**; o `start` agora:
+  - **spawn totalmente desacoplado:** `stdio: ['ignore', logFd, logFd]` —
+    stdout/stderr do uvicorn vão direto para
+    `<home>/storage/logs/backend.log` (nenhum pipe no terminal),
+    `detached: true` (grupo próprio: sobrevive ao fechamento da janela),
+    `windowsHide: true`, `fs.closeSync(logFd)` e **`child.unref()`** (o Node
+    não espera pelo filho);
+  - **zero keep-alive:** removidos dummy HTTP server, `await new Promise(...)`,
+  signal handlers de bloqueio e o encaminhamento manual de pipes — após a
+  mensagem de sucesso o launcher **encerra naturalmente** e o prompt volta
+  (comportamento esperado);
+  - **nunca finge sucesso:** `waitForHealth` confirma `/api/health` antes do
+    ✅; falha de spawn (`child.on('error')`) e crash na janela de startup
+    (`child.on('exit')` com flag `sucessoAnunciado`) imprimem motivo + as
+    últimas linhas do `backend.log` e removem o lock;
+  - **lock** (`leadmaster.pid`) gravado com PID + porta; mensagem final ensina
+    o caminho do log e o comando `kill` — **Ctrl+C não é mais ensinado**;
+  - **Exit Trace** agora só acusa saídas inesperadas: código 0 no `start` é o
+    comportamento DESENHADO.
+- **`start.bat` gerado sem `pause`, com `exit`** — a janela preta do CMD fecha
+  sozinha ao final (o servidor fica no ar em background).
+- **Dashboard:** o aviso de terminal ensina o modelo background
+  (`storage/logs/backend.log` + `npx --yes @danhachuel/leadmaster kill`) em vez
+  de Ctrl+C.
+- **AGENTS.md + skill `windows-runtime-guard`:** Regra Inviolável reescrita —
+  "É PROIBIDO tentar manter o terminal preso no Windows. O launcher deve ser
+  descartável (`unref` + stdio em arquivo). O terminal SEMPRE devolverá o
+  prompt, e isso é o comportamento esperado."; keep-alives (readline,
+  setInterval, dummy server, `await new Promise`, stdin.resume, beforeExit)
+  promovidos a proibidos permanentes.
+- **Gate de regressão** (`test_launcher_protections.py`) reescrito para o novo
+  modelo: exige `stdio: ['ignore', logFd, logFd]`, `fs.closeSync(logFd)`,
+  `child.unref()`, lock, kill e a mensagem de sucesso; falha se qualquer
+  keep-alive proibido voltar.
+- **Validado ao vivo:** start em home temporário → prompt volta em segundos,
+  uvicorn no ar (health 200), logs gravados em `backend.log`, `kill` encerra e
+  remove o lock; instância sobrevive ao encerramento do launcher (por design).
+
 ## [0.1.47] — 2026-11-20
 
 ### Corrigido
